@@ -74,11 +74,28 @@ echo ""
 # ---------------------------------------------------------------------------
 echo "[4/5] Setting up Node.js frontend..."
 
+NODE_VERSION="v20.18.1"
+ARCH="$(uname -m)"
+
 # Install Node.js 20 LTS if not already present
 if ! command -v node &>/dev/null || [[ "$(node --version)" != v20* ]]; then
     echo "      Installing Node.js 20 LTS..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+
+    if [ "$ARCH" = "armv7l" ] || [ "$ARCH" = "armv6l" ]; then
+        # 32-bit ARM — NodeSource does not support armhf, use unofficial builds
+        echo "      Detected 32-bit ARM ($ARCH) — using unofficial Node.js builds..."
+        curl -fsSL "https://unofficial-builds.nodejs.org/download/release/${NODE_VERSION}/node-${NODE_VERSION}-linux-armv7l.tar.xz" -o /tmp/node.tar.xz
+        sudo tar -xf /tmp/node.tar.xz -C /usr/local --strip-components=1
+        rm -f /tmp/node.tar.xz
+    elif [ "$ARCH" = "aarch64" ]; then
+        # 64-bit ARM — NodeSource works
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+    else
+        # x86_64 or other
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+    fi
 fi
 
 echo "      Node: $(node --version)"
