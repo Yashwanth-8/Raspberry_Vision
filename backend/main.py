@@ -230,7 +230,7 @@ async def main() -> None:
                 min_tracking_confidence=0.5,
             ),
         )
-        logger.info("MediaPipe FaceMesh loaded")
+        logger.info("Face detector (YuNet) loaded")
 
         kalman = KalmanFilter1D(initial_estimate=2.0, process_noise=0.005, measurement_noise=0.08)
 

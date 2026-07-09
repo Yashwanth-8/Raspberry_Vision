@@ -79,16 +79,22 @@ Then install backend dependencies:
 ```bash
 cd /home/pi/Nadi_hardware/backend
 
-# Create a virtual environment and install dependencies
-uv venv
+# Use --system-site-packages so picamera2 (system-installed) is accessible
+uv venv --system-site-packages
 uv pip install -r requirements.txt
 ```
 
-> **Note:** `picamera2` is pre-installed on Raspberry Pi OS Bookworm. Do **not** install it via uv/pip — doing so will break it. The `requirements.txt` intentionally excludes it.
+> **Note:** `picamera2` is pre-installed on Raspberry Pi OS Bookworm. The venv uses
+> `--system-site-packages` so it can access picamera2 without pip-installing it
+> (which would break it).
 
-Verify MediaPipe installed correctly:
+> **YuNet model:** On first run the backend automatically downloads the face
+> detection model (~80 KB) from the OpenCV model zoo. Make sure the Pi has
+> internet access for the first run.
+
+Verify OpenCV is installed correctly:
 ```bash
-uv run python -c "import mediapipe; print('MediaPipe OK:', mediapipe.__version__)"
+uv run python -c "import cv2; print('OpenCV OK:', cv2.__version__)"
 ```
 
 ---
@@ -129,8 +135,10 @@ Expected output:
 ```
 2026-xx-xx [INFO] Starting Nadi Hardware backend...
 2026-xx-xx [INFO] Pi Camera started (1280x720)
-2026-xx-xx [INFO] MediaPipe FaceMesh loaded
 2026-xx-xx [INFO] WebSocket server listening on ws://0.0.0.0:8765
+[FaceDetector] Downloading YuNet model → ... (~80 KB)…  ← first run only
+[FaceDetector] Model downloaded OK.                      ← first run only
+2026-xx-xx [INFO] Face detector (YuNet) loaded
 ```
 
 Sit in front of the camera. You should see logs like:
@@ -241,9 +249,9 @@ vcgencmd measure_temp
 ```
 
 ### Frontend stuck on "Detecting Pi mode..."
-The app waits 1.6 seconds for the WebSocket connection. If the backend starts slower than expected:
-- Increase the `CONNECT_TIMEOUT_MS` in `frontend/src/lib/hardware-ws.ts` from `1500` to `3000`
-- Or just wait — it will fall back to browser mode and still work
+The app waits up to 5 seconds for the WebSocket connection. If the backend starts slower than expected:
+- Wait a few more seconds — it will fall back to browser mode if the backend is not ready
+- Check the backend is running: `ps aux | grep python`
 
 ### `npm run build` fails on Pi
 ```bash
@@ -284,6 +292,6 @@ The test logic, scoring, UI, and PDF export are all unchanged from the original 
 | Python | 3.11+ |
 | Node.js | 20 LTS |
 | picamera2 | pre-installed with OS |
-| mediapipe | 0.10.x |
+| mediapipe | removed — replaced by OpenCV YuNet |
 | websockets | 12.x |
 | Next.js | 16.x |
