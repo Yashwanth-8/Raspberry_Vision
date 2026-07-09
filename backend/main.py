@@ -29,6 +29,8 @@ import logging
 import time
 from typing import Set
 
+import cv2  # for JPEG encoding of preview frames
+
 import websockets
 from websockets.server import WebSocketServerProtocol
 
@@ -110,6 +112,8 @@ async def camera_loop(
 
     loop = asyncio.get_event_loop()
     target_interval = 1.0 / 30  # aim for ~30 fps broadcasts
+    _preview_counter = 0
+    PREVIEW_SKIP = 3  # send JPEG preview every 3 frames (~10 fps)
 
     while True:
         t0 = time.monotonic()
@@ -170,10 +174,23 @@ async def camera_loop(
             "focal_length_px": round(focal_length_px, 1),
         })
 
-        # Broadcast to all connected clients (fire-and-forget per client)
+        # Broadcast JSON data to all connected clients
         if connected_clients:
             await asyncio.gather(
                 *[client.send(message) for client in connected_clients.copy()],
+                return_exceptions=True,
+            )
+
+        # Send JPEG preview frame every PREVIEW_SKIP frames
+        _preview_counter += 1
+        if _preview_counter >= PREVIEW_SKIP and connected_clients:
+            _preview_counter = 0
+            ph, pw = frame.shape[0] // 2, frame.shape[1] // 2
+            small = cv2.resize(frame, (pw, ph))
+            _, jpeg_buf = cv2.imencode('.jpg', small, [cv2.IMWRITE_JPEG_QUALITY, 60])
+            jpeg_bytes = jpeg_buf.tobytes()
+            await asyncio.gather(
+                *[client.send(jpeg_bytes) for client in connected_clients.copy()],
                 return_exceptions=True,
             )
 

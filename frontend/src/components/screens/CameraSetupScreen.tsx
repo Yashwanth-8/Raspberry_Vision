@@ -38,7 +38,7 @@ export default function CameraSetupScreen() {
     const [modelLoading, setModelLoading] = useState(true);
 
     // Pi hardware mode — WebSocket connection to Python backend
-    const { piMode, faceDetected: piFaceDetected, faceCount, irisPx } = useHardwareWS();
+    const { piMode, faceDetected: piFaceDetected, faceCount, irisPx, previewUrl } = useHardwareWS();
     // Wait up to 1.5 s for WS probe before starting browser MediaPipe
     const [piProbeComplete, setPiProbeComplete] = useState(false);
     useEffect(() => {
@@ -311,21 +311,31 @@ export default function CameraSetupScreen() {
                     </div>
                 )}
 
-                {/* Camera feed — Pi mode shows status card; browser mode shows video */}
+                {/* Camera feed — Pi mode streams JPEG preview; browser mode shows video */}
                 <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-surface mb-6 border border-white/5">
                     {piMode ? (
-                        /* Pi Camera — processed by Python backend */
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                            <div className="w-20 h-20 rounded-full bg-primary/10 border-2 border-primary/40 flex items-center justify-center">
-                                <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-                                    <circle cx="18" cy="18" r="10" stroke="#00D4AA" strokeWidth="2" fill="none" />
-                                    <circle cx="18" cy="18" r="4" fill="#00D4AA" />
-                                    <rect x="14" y="6" width="8" height="4" rx="2" fill="#00D4AA" opacity="0.6" />
-                                </svg>
+                        previewUrl ? (
+                            /* Live JPEG stream from Pi camera */
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={previewUrl}
+                                alt="Pi Camera"
+                                className="absolute inset-0 w-full h-full object-cover -scale-x-100"
+                            />
+                        ) : (
+                            /* Waiting for first frame */
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+                                <div className="w-20 h-20 rounded-full bg-primary/10 border-2 border-primary/40 flex items-center justify-center animate-pulse">
+                                    <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+                                        <circle cx="18" cy="18" r="10" stroke="#00D4AA" strokeWidth="2" fill="none" />
+                                        <circle cx="18" cy="18" r="4" fill="#00D4AA" />
+                                        <rect x="14" y="6" width="8" height="4" rx="2" fill="#00D4AA" opacity="0.6" />
+                                    </svg>
+                                </div>
+                                <p className="text-primary font-semibold">Pi Camera Active</p>
+                                <p className="text-xs text-text-muted">Waiting for preview...</p>
                             </div>
-                            <p className="text-primary font-semibold">Pi Camera Active</p>
-                            <p className="text-xs text-text-muted">Face detection running on Raspberry Pi</p>
-                        </div>
+                        )
                     ) : (
                         <>
                             <video
@@ -341,8 +351,8 @@ export default function CameraSetupScreen() {
                         </>
                     )}
 
-                    {/* Face guide oval — shown in browser mode when no face yet */}
-                    {!piMode && !effectiveFaceDetected && cameraReady && (
+                    {/* Face guide oval — shown when no face detected yet */}
+                    {!effectiveFaceDetected && cameraReady && (piMode ? !!previewUrl : true) && (
                         <div className="absolute inset-0 flex items-center justify-center">
                             <div className="w-40 h-56 border-2 border-dashed border-primary/40 rounded-full animate-pulse-glow" />
                         </div>

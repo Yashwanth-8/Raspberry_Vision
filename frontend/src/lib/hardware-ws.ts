@@ -29,6 +29,8 @@ export interface HardwareWSState {
     faceCount: number;
     irisPx: number | null;
     focalLengthPx: number;
+    /** Object URL of the latest JPEG preview frame from the Pi camera */
+    previewUrl: string | null;
 }
 
 /**
@@ -50,6 +52,7 @@ class HardwareWSManager {
         faceCount: 0,
         irisPx: null,
         focalLengthPx: 0,
+        previewUrl: null,
     };
 
     static getInstance(): HardwareWSManager {
@@ -98,6 +101,15 @@ class HardwareWSManager {
         };
 
         this.ws.onmessage = (ev) => {
+            // Binary message = JPEG preview frame from Pi camera
+            if (ev.data instanceof Blob) {
+                const url = URL.createObjectURL(ev.data);
+                const old = this.state.previewUrl;
+                this.state = { ...this.state, previewUrl: url };
+                this.notify();
+                if (old) URL.revokeObjectURL(old);
+                return;
+            }
             try {
                 const msg = JSON.parse(ev.data as string);
                 if (msg.type !== "frame") return;
@@ -127,7 +139,8 @@ class HardwareWSManager {
 
         this.ws.onclose = () => {
             clearTimeout(connectTimeout);
-            this.state = { ...this.state, piMode: false, faceDetected: false, faceCount: 0 };
+            if (this.state.previewUrl) URL.revokeObjectURL(this.state.previewUrl);
+            this.state = { ...this.state, piMode: false, faceDetected: false, faceCount: 0, previewUrl: null };
             this.notify();
             if (!this.destroyed) this.scheduleReconnect();
         };
@@ -171,6 +184,7 @@ export function useHardwareWS(): HardwareWSState {
         faceCount: 0,
         irisPx: null,
         focalLengthPx: 0,
+        previewUrl: null,
     }));
 
     useEffect(() => {
