@@ -213,22 +213,30 @@ async def main() -> None:
     camera.start()
     logger.info("Pi Camera started (%dx%d)", camera.width, camera.height)
 
-    detector = FaceDetector(
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-    )
-    logger.info("MediaPipe FaceMesh loaded")
+    loop = asyncio.get_event_loop()
 
-    kalman = KalmanFilter1D(initial_estimate=2.0, process_noise=0.005, measurement_noise=0.08)
-
-    # Start camera loop as a background task
-    camera_task = asyncio.create_task(camera_loop(camera, detector, kalman))
-
-    # Start WebSocket server
+    # Start WebSocket server FIRST so the frontend can connect immediately.
+    # MediaPipe initialisation (3–8 s on first run) runs in an executor thread
+    # so it never blocks the event loop or the WS handshake.
     logger.info("WebSocket server listening on ws://%s:%d", WS_HOST, WS_PORT)
     async with websockets.serve(handle_client, WS_HOST, WS_PORT):
+        logger.info("Loading MediaPipe FaceMesh (may take a few seconds on first run)...")
+        detector = await loop.run_in_executor(
+            None,
+            lambda: FaceDetector(
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            ),
+        )
+        logger.info("MediaPipe FaceMesh loaded")
+
+        kalman = KalmanFilter1D(initial_estimate=2.0, process_noise=0.005, measurement_noise=0.08)
+
+        # Start camera + detection loop as a background task
+        camera_task = asyncio.create_task(camera_loop(camera, detector, kalman))
+
         try:
             await camera_task
         except asyncio.CancelledError:

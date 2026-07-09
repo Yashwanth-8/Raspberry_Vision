@@ -8,6 +8,7 @@ import type {
     EDirection,
     TestResult,
     OptotypeType,
+    PatientInfo,
 } from "./types";
 import { ACUITY_LEVELS } from "./constants";
 
@@ -64,6 +65,14 @@ interface AppState {
     testResult: TestResult | null;
     setTestResult: (r: TestResult) => void;
 
+    // Clinical pre-test data
+    eyeTested: "OD" | "OS" | "OU";
+    setEyeTested: (e: "OD" | "OS" | "OU") => void;
+    correctionStatus: "unaided" | "glasses" | "contact-lenses";
+    setCorrectionStatus: (c: "unaided" | "glasses" | "contact-lenses") => void;
+    patientInfo: PatientInfo | null;
+    setPatientInfo: (p: PatientInfo | null) => void;
+
     // Reset
     resetTest: () => void;
 }
@@ -112,6 +121,13 @@ export const useAppStore = create<AppState>((set) => ({
 
     testResult: null,
     setTestResult: (testResult) => set({ testResult }),
+
+    eyeTested: "OU",
+    setEyeTested: (eyeTested) => set({ eyeTested }),
+    correctionStatus: "unaided",
+    setCorrectionStatus: (correctionStatus) => set({ correctionStatus }),
+    patientInfo: null,
+    setPatientInfo: (patientInfo) => set({ patientInfo }),
 
     resetTest: () =>
         set({

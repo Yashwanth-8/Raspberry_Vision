@@ -187,6 +187,12 @@ export default function TestScreen() {
         setCurrentFilteredDist(piStoreDistance);
     }, [piMode, piStoreDistance]);
 
+    // Keep lastFaceSeenRef current in Pi mode so face-lost cheat detection works correctly
+    useEffect(() => {
+        if (!piMode || !piFaceDetected) return;
+        lastFaceSeenRef.current = Date.now();
+    }, [piMode, piFaceDetected]);
+
     // Start camera + face mesh
     useEffect(() => {
         // Skip if Pi backend is handling face detection
@@ -524,32 +530,67 @@ export default function TestScreen() {
             }
         }
 
-        // Fractional LogMAR — letter-by-letter scoring (ETDRS-style)
-        // Each correct trial earns credit proportional to the LogMAR gap at that level
-        let totalCredit = 0;
-        let varianceSum = 0;
-        for (const score of perLevelScores) {
-            const levelIdx = ACUITY_LEVELS.findIndex(l => l.logMAR === score.level.logMAR);
-            const levelGap = levelIdx === 0
-                ? LOGMAR_CEILING - ACUITY_LEVELS[0].logMAR
-                : ACUITY_LEVELS[levelIdx - 1].logMAR - ACUITY_LEVELS[levelIdx].logMAR;
-            const creditPerTrial = levelGap / score.level.trialsPerLevel;
-            totalCredit += score.correct * creditPerTrial;
-            // Binomial variance for 95% CI
-            const p = score.total > 0 ? score.correct / score.total : 0;
-            varianceSum += score.total * creditPerTrial * creditPerTrial * p * (1 - p);
+        // ── ETDRS fractional LogMAR (Ferris et al., ETDRS Report #13, 1982) ─────────
+        // Uniform 0.1 LogMAR steps → every correct letter = exactly 0.02 LogMAR
+        // Formula: acuity = LOGMAR_CEILING(1.1) − 0.02 × totalCorrectLetters
+        const totalCorrect = perLevelScores.reduce((sum, s) => sum + s.correct, 0);
+        const fractionalLogMAR = Math.round((LOGMAR_CEILING - 0.02 * totalCorrect) * 1000) / 1000;
+
+        // ETDRS letter score — primary metric in clinical ophthalmology trials (0–70)
+        const etdrsLetterScore = totalCorrect;
+
+        // 95% CI: ±0.1 LogMAR (±1 line) — ETDRS empirical test-retest repeatability
+        const CI_HALF_WIDTH = 0.1;
+
+        // WHO ICD-11 visual impairment classification
+        const whoClassification =
+            fractionalLogMAR < 0.3 ? "Normal vision" :
+                fractionalLogMAR < 0.5 ? "Mild impairment" :
+                    fractionalLogMAR < 1.0 ? "Moderate impairment" :
+                        fractionalLogMAR < 1.3 ? "Severe impairment" :
+                            "Profound impairment";
+
+        // Decimal VA: 20 / snellenDenominator (standard in Indian ophthalmology)
+        const snellenDenom = parseFloat(bestLevel.snellen.split("/")[1] ?? "20");
+        const decimalVA = Math.round((20 / snellenDenom) * 100) / 100;
+
+        // Ambient light estimation from live camera feed (average luminance 0–255)
+        let ambientLightEstimate = 0;
+        if (videoRef.current && videoRef.current.readyState >= 2) {
+            try {
+                const tmpCanvas = document.createElement("canvas");
+                tmpCanvas.width = 80;
+                tmpCanvas.height = 45;
+                const ctx2 = tmpCanvas.getContext("2d");
+                if (ctx2) {
+                    ctx2.drawImage(videoRef.current, 0, 0, 80, 45);
+                    const pixels = ctx2.getImageData(0, 0, 80, 45).data;
+                    let lumSum = 0;
+                    for (let i = 0; i < pixels.length; i += 4) {
+                        lumSum += 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+                    }
+                    ambientLightEstimate = Math.round(lumSum / (80 * 45));
+                }
+            } catch { /* canvas security error — skip */ }
         }
-        const fractionalLogMAR = Math.round((LOGMAR_CEILING - totalCredit) * 1000) / 1000;
-        const se = Math.sqrt(varianceSum);
-        const ciHalfWidth = 1.96 * se;
+
+        // Clinical metadata from pre-test form
+        const { eyeTested: eyeTestedVal, correctionStatus: correctionStatusVal, patientInfo: patientInfoVal } = useAppStore.getState();
 
         const result: TestResult = {
             acuitySnellen: bestLevel.snellen,
             acuityLogMAR: bestLevel.logMAR,
             fractionalLogMAR,
+            etdrsLetterScore,
+            whoClassification,
+            decimalVA,
+            eyeTested: eyeTestedVal,
+            correctionStatus: correctionStatusVal,
+            patientInfo: patientInfoVal,
+            ambientLightEstimate,
             confidenceInterval: {
-                lower: Math.round((fractionalLogMAR - ciHalfWidth) * 1000) / 1000,
-                upper: Math.round((fractionalLogMAR + ciHalfWidth) * 1000) / 1000,
+                lower: Math.round((fractionalLogMAR - CI_HALF_WIDTH) * 1000) / 1000,
+                upper: Math.round((fractionalLogMAR + CI_HALF_WIDTH) * 1000) / 1000,
                 confidence: 0.95,
             },
             responses: allResponses,

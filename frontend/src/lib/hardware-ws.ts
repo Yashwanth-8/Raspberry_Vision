@@ -20,7 +20,7 @@ import { useAppStore } from "@/lib/store";
 
 const WS_URL = "ws://localhost:8765";
 const RECONNECT_DELAY_MS = 2000;
-const CONNECT_TIMEOUT_MS = 1500; // if no open within this time → not Pi mode
+const CONNECT_TIMEOUT_MS = 5000; // if no open within this time → not Pi mode
 
 export interface HardwareWSState {
     /** true when connected to the Python backend (Pi mode) */
@@ -107,7 +107,8 @@ class HardwareWSManager {
                 const old = this.state.previewUrl;
                 this.state = { ...this.state, previewUrl: url };
                 this.notify();
-                if (old) URL.revokeObjectURL(old);
+                // Defer revocation so React finishes rendering the new URL first
+                if (old) setTimeout(() => URL.revokeObjectURL(old), 500);
                 return;
             }
             try {

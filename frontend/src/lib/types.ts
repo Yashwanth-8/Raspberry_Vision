@@ -1,5 +1,11 @@
 // ---- Types for NadiVision ----
 
+export interface PatientInfo {
+    age?: number;
+    gender?: "M" | "F" | "Other";
+    patientId?: string;
+}
+
 export type AppScreen =
     | "landing"
     | "calibration"
@@ -42,6 +48,13 @@ export interface TestResult {
     acuitySnellen: string;
     acuityLogMAR: number;
     fractionalLogMAR: number;
+    etdrsLetterScore: number;           // total correct letters (0–70), ETDRS primary metric
+    whoClassification: string;           // WHO ICD-11 visual impairment category
+    decimalVA: number;                   // 20/denominator as decimal (e.g. 1.0 for 20/20)
+    eyeTested: "OD" | "OS" | "OU";     // Right / Left / Both
+    correctionStatus: "unaided" | "glasses" | "contact-lenses";
+    patientInfo: PatientInfo | null;
+    ambientLightEstimate: number;        // 0–255 average luminance from camera feed
     confidenceInterval: { lower: number; upper: number; confidence: number };
     responses: TestResponse[];
     testDistance: number;

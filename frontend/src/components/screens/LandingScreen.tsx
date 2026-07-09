@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { useAppStore } from "@/lib/store";
 import { autoDetectScreenCalibration } from "@/lib/screen-calibration";
 import type { CalibrationData } from "@/lib/types";
@@ -94,6 +95,12 @@ export default function LandingScreen() {
     const setScreen = useAppStore((s) => s.setScreen);
     const calibration = useAppStore((s) => s.calibration);
     const optotypeType = useAppStore((s) => s.optotypeType);
+    const eyeTested = useAppStore((s) => s.eyeTested);
+    const setEyeTested = useAppStore((s) => s.setEyeTested);
+    const correctionStatus = useAppStore((s) => s.correctionStatus);
+    const setCorrectionStatus = useAppStore((s) => s.setCorrectionStatus);
+    const [localAge, setLocalAge] = useState("");
+    const [localGender, setLocalGender] = useState("");
 
     const handleStart = () => {
         // Detect mobile (touch-primary device)
@@ -111,6 +118,16 @@ export default function LandingScreen() {
         // Store calibration for future sessions
         useAppStore.getState().setCalibration(cal);
         localStorage.setItem("nadi-calibration", JSON.stringify(cal));
+
+        // Save optional patient demographics
+        if (localAge || localGender) {
+            useAppStore.getState().setPatientInfo({
+                age: localAge ? parseInt(localAge, 10) : undefined,
+                gender: localGender ? (localGender as "M" | "F" | "Other") : undefined,
+            });
+        } else {
+            useAppStore.getState().setPatientInfo(null);
+        }
 
         // Skip calibration screen entirely — go straight to IPD
         setScreen("ipd");
@@ -174,8 +191,8 @@ export default function LandingScreen() {
                     <button
                         onClick={() => useAppStore.getState().setOptotypeType("tumbling-e")}
                         className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${optotypeType === "tumbling-e"
-                                ? "bg-primary/20 text-primary border border-primary/40"
-                                : "bg-surface border border-white/10 text-text-secondary hover:border-white/20"
+                            ? "bg-primary/20 text-primary border border-primary/40"
+                            : "bg-surface border border-white/10 text-text-secondary hover:border-white/20"
                             }`}
                     >
                         <span className="mr-1.5 font-bold">E</span>Tumbling E
@@ -183,12 +200,96 @@ export default function LandingScreen() {
                     <button
                         onClick={() => useAppStore.getState().setOptotypeType("landolt-c")}
                         className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${optotypeType === "landolt-c"
-                                ? "bg-primary/20 text-primary border border-primary/40"
-                                : "bg-surface border border-white/10 text-text-secondary hover:border-white/20"
+                            ? "bg-primary/20 text-primary border border-primary/40"
+                            : "bg-surface border border-white/10 text-text-secondary hover:border-white/20"
                             }`}
                     >
                         <span className="mr-1.5 font-bold">C</span>Landolt C
                     </button>
+                </motion.div>
+
+                {/* Clinical pre-test setup */}
+                <motion.div
+                    className="w-full max-w-md glass rounded-2xl p-5 mb-6"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.85, duration: 0.6 }}
+                >
+                    <p className="text-xs text-text-muted uppercase tracking-widest mb-4 text-center font-medium">
+                        Pre-Test Setup
+                    </p>
+
+                    {/* Eye selection */}
+                    <div className="mb-4">
+                        <p className="text-xs text-text-secondary mb-2 font-medium">Eye to test</p>
+                        <div className="flex gap-2">
+                            {(["OD", "OS", "OU"] as const).map((e) => (
+                                <button
+                                    key={e}
+                                    onClick={() => setEyeTested(e)}
+                                    className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer border ${eyeTested === e
+                                            ? "bg-primary/20 text-primary border-primary/40"
+                                            : "bg-surface border-white/10 text-text-secondary hover:border-white/20"
+                                        }`}
+                                >
+                                    {e === "OD" ? "Right (OD)" : e === "OS" ? "Left (OS)" : "Both (OU)"}
+                                </button>
+                            ))}
+                        </div>
+                        {eyeTested !== "OU" && (
+                            <p className="text-xs text-text-muted mt-1.5 text-center">
+                                Cover your {eyeTested === "OD" ? "left" : "right"} eye with your hand during the test
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Correction status */}
+                    <div className="mb-4">
+                        <p className="text-xs text-text-secondary mb-2 font-medium">Correction status</p>
+                        <div className="flex gap-2">
+                            {(["unaided", "glasses", "contact-lenses"] as const).map((c) => (
+                                <button
+                                    key={c}
+                                    onClick={() => setCorrectionStatus(c)}
+                                    className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer border ${correctionStatus === c
+                                            ? "bg-primary/20 text-primary border-primary/40"
+                                            : "bg-surface border-white/10 text-text-secondary hover:border-white/20"
+                                        }`}
+                                >
+                                    {c === "unaided" ? "Unaided" : c === "glasses" ? "Glasses" : "Contacts"}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Optional patient demographics */}
+                    <div className="flex gap-3">
+                        <div className="flex-1">
+                            <p className="text-xs text-text-muted mb-1.5">Age <span className="opacity-60">(optional)</span></p>
+                            <input
+                                type="number"
+                                min={1}
+                                max={120}
+                                placeholder="—"
+                                value={localAge}
+                                onChange={(e) => setLocalAge(e.target.value)}
+                                className="w-full bg-surface border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-primary/40"
+                            />
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-xs text-text-muted mb-1.5">Gender <span className="opacity-60">(optional)</span></p>
+                            <select
+                                value={localGender}
+                                onChange={(e) => setLocalGender(e.target.value)}
+                                className="w-full bg-surface border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary/40 cursor-pointer"
+                            >
+                                <option value="">—</option>
+                                <option value="M">Male</option>
+                                <option value="F">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                    </div>
                 </motion.div>
 
                 {/* CTA Button */}

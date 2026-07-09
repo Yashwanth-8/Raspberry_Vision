@@ -4,9 +4,23 @@
 
 set -e
 
+# Ensure local binaries (uv, node, npm) are in PATH.
+# Required when launched from autostart .desktop files or restricted shells.
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/backend"
 FRONTEND_DIR="$SCRIPT_DIR/frontend"
+
+# Detect the correct Chromium binary (name differs across Pi OS builds)
+if command -v chromium-browser &>/dev/null; then
+    CHROMIUM_BIN="chromium-browser"
+elif command -v chromium &>/dev/null; then
+    CHROMIUM_BIN="chromium"
+else
+    echo "ERROR: Chromium not found. Install with: apt-get install -y chromium-browser"
+    exit 1
+fi
 
 echo "=============================="
 echo " Nadi Hardware Startup Script"
@@ -15,7 +29,8 @@ echo "=============================="
 # ---- Start Python backend ----
 echo "[1/2] Starting Python backend (WebSocket server on :8765)..."
 cd "$BACKEND_DIR"
-uv run python main.py &
+# Use venv Python directly — works regardless of whether uv is in PATH
+"$BACKEND_DIR/.venv/bin/python" main.py &
 BACKEND_PID=$!
 echo "      Backend PID: $BACKEND_PID"
 
@@ -34,7 +49,7 @@ sleep 5
 
 # ---- Open Chromium in kiosk mode ----
 echo "Opening Chromium in kiosk mode..."
-chromium-browser \
+"$CHROMIUM_BIN" \
     --kiosk \
     --noerrdialogs \
     --disable-infobars \
