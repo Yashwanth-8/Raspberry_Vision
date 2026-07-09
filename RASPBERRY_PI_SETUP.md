@@ -31,23 +31,26 @@ The frontend auto-detects whether the Python backend is running. If yes → **Pi
 
 ---
 
-## Step 2 — Enable Pi Camera
+## Step 2 — Enable and Verify Pi Camera (Bookworm)
+
+On Raspberry Pi OS Bookworm, the old Legacy Camera option is removed.
+Use the rpicam/libcamera stack.
 
 ```bash
-sudo raspi-config
-```
-Navigate to: `Interface Options → Camera → Enable`
-
-Reboot:
-```bash
+sudo apt update
+sudo apt full-upgrade -y
+sudo apt install -y rpicam-apps
 sudo reboot
 ```
 
-Test that the camera is detected:
+After reboot, test that the camera is detected:
 ```bash
-libcamera-hello --timeout 3000
+rpicam-hello --list-cameras
+rpicam-hello -t 3000
 ```
-You should see a preview window for 3 seconds. If not, check the ribbon cable connection.
+You should see at least one detected camera and a 3-second preview window.
+
+If no camera is detected, power off the Pi and reseat the ribbon cable, then test again.
 
 ---
 
@@ -64,25 +67,28 @@ Or clone your repo directly on the Pi if you've pushed it to GitHub.
 
 ## Step 4 — Install Python Backend Dependencies
 
-SSH into the Pi or open a terminal:
+SSH into the Pi or open a terminal.
 
+First, install `uv` if not already present:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+```
+
+Then install backend dependencies:
 ```bash
 cd /home/pi/Nadi_hardware/backend
 
-# Create a virtual environment (recommended)
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
+# Create a virtual environment and install dependencies
+uv venv
+uv pip install -r requirements.txt
 ```
 
-> **Note:** `picamera2` is pre-installed on Raspberry Pi OS Bookworm. Do **not** pip install it — doing so will break it. The `requirements.txt` intentionally excludes it.
+> **Note:** `picamera2` is pre-installed on Raspberry Pi OS Bookworm. Do **not** install it via uv/pip — doing so will break it. The `requirements.txt` intentionally excludes it.
 
 Verify MediaPipe installed correctly:
 ```bash
-python3 -c "import mediapipe; print('MediaPipe OK:', mediapipe.__version__)"
+uv run python -c "import mediapipe; print('MediaPipe OK:', mediapipe.__version__)"
 ```
 
 ---
@@ -116,8 +122,7 @@ Make sure the camera works with the Python backend before adding the frontend:
 
 ```bash
 cd /home/pi/Nadi_hardware/backend
-source venv/bin/activate
-python3 main.py
+uv run python main.py
 ```
 
 Expected output:
@@ -196,12 +201,30 @@ EOF
 
 ### Camera not detected
 ```bash
-# Check camera is connected
-vcgencmd get_camera
-# Should output: supported=1 detected=1
+# List detected cameras
+rpicam-hello --list-cameras
 
-# Check picamera2
-python3 -c "from picamera2 import Picamera2; print('OK')"
+# Preview test
+rpicam-hello -t 3000
+```
+
+If `--list-cameras` shows no camera:
+- Fully power off the Pi and unplug power.
+- Reseat the CSI ribbon cable on both Pi and camera module.
+- Boot and test again.
+
+Check auto-detect setting:
+```bash
+grep -n camera_auto_detect /boot/firmware/config.txt
+```
+It should contain:
+```bash
+camera_auto_detect=1
+```
+
+For deeper diagnostics:
+```bash
+dmesg | grep -Ei "unicam|imx|ov|camera|csi"
 ```
 
 ### WebSocket connection refused in frontend

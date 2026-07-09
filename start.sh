@@ -15,7 +15,7 @@ echo "=============================="
 # ---- Start Python backend ----
 echo "[1/2] Starting Python backend (WebSocket server on :8765)..."
 cd "$BACKEND_DIR"
-python3 main.py &
+uv run python main.py &
 BACKEND_PID=$!
 echo "      Backend PID: $BACKEND_PID"
 
