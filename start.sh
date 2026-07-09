@@ -29,12 +29,12 @@ echo "=============================="
 # ---- Start Python backend ----
 echo "[1/2] Starting Python backend (WebSocket server on :8765)..."
 cd "$BACKEND_DIR"
-# Use venv Python directly — works regardless of whether uv is in PATH
-"$BACKEND_DIR/.venv/bin/python" main.py &
+# Use venv Python directly
+"$BACKEND_DIR/.venv/bin/python3" main.py &
 BACKEND_PID=$!
 echo "      Backend PID: $BACKEND_PID"
 
-# Give backend 3 seconds to initialise camera + MediaPipe
+# Give backend a few seconds to initialise camera + face detector
 sleep 3
 
 # ---- Start Next.js frontend ----

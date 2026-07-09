@@ -130,7 +130,7 @@ async def camera_loop(
             None, detector.process, frame
         )
 
-        iris_px: float | None = None
+        iris_px = None  # type: Optional[float]
         raw_distance = 0.0
         confidence = 0.0
         filtered_distance = 0.0

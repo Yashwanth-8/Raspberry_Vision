@@ -65,70 +65,44 @@ Or clone your repo directly on the Pi if you've pushed it to GitHub.
 
 ---
 
-## Step 4 — Install Python Backend Dependencies
+## Step 4 — Install Everything (One Script)
 
-SSH into the Pi or open a terminal.
+The repo includes a `setup.sh` that installs all backend and frontend
+dependencies in one go. No `uv` required — uses standard system Python and pip.
 
-First, install `uv` if not already present:
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.local/bin/env
+cd /home/pi/Nadi_hardware
+chmod +x setup.sh
+./setup.sh
 ```
 
-Then install backend dependencies:
-```bash
-cd /home/pi/Nadi_hardware/backend
-
-# Use --system-site-packages so picamera2 (system-installed) is accessible
-uv venv --system-site-packages
-uv pip install -r requirements.txt
-```
+This script:
+1. Installs system packages (`python3-opencv`, `python3-numpy`, `python3-pip`, `curl`, Node.js 20)
+2. Creates a Python venv at `backend/.venv` with `--system-site-packages`
+3. Installs `websockets` via pip
+4. Downloads the YuNet face detection model (~80 KB)
+5. Runs `npm install` and `npm run build` for the frontend
+6. Makes `start.sh` executable
 
 > **Note:** `picamera2` is pre-installed on Raspberry Pi OS Bookworm. The venv uses
-> `--system-site-packages` so it can access picamera2 without pip-installing it
-> (which would break it).
+> `--system-site-packages` so it can access picamera2, opencv, and numpy from the system.
 
-> **YuNet model:** On first run the backend automatically downloads the face
-> detection model (~80 KB) from the OpenCV model zoo. Make sure the Pi has
-> internet access for the first run.
-
-Verify OpenCV is installed correctly:
+Verify after setup:
 ```bash
-uv run python -c "import cv2; print('OpenCV OK:', cv2.__version__)"
+cd /home/pi/Nadi_hardware/backend
+.venv/bin/python3 -c "import cv2; print('OpenCV OK:', cv2.__version__)"
+.venv/bin/python3 -c "import websockets; print('websockets OK:', websockets.__version__)"
 ```
 
 ---
 
-## Step 5 — Install Node.js Frontend Dependencies
-
-```bash
-# Install Node.js 20 LTS (if not already installed)
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# Verify
-node --version   # should be v20.x.x
-npm --version
-
-# Install frontend dependencies
-cd /home/pi/Nadi_hardware/frontend
-npm install
-
-# Build the production bundle (do this once)
-npm run build
-```
-
-> Building on Pi 4 takes about 3–5 minutes. Do it once; subsequent starts use the cached build.
-
----
-
-## Step 6 — Test Backend Alone
+## Step 5 — Test Backend Alone
 
 Make sure the camera works with the Python backend before adding the frontend:
 
 ```bash
 cd /home/pi/Nadi_hardware/backend
-uv run python main.py
+.venv/bin/python3 main.py
 ```
 
 Expected output:
