@@ -76,18 +76,21 @@ echo "[4/5] Setting up Node.js frontend..."
 
 NODE_VERSION="v20.18.1"
 ARCH="$(uname -m)"
+# On Raspberry Pi, kernel can be 64-bit but userland 32-bit — check dpkg
+DEB_ARCH="$(dpkg --print-architecture 2>/dev/null || echo "$ARCH")"
 
 # Install Node.js 20 LTS if not already present
 if ! command -v node &>/dev/null || [[ "$(node --version)" != v20* ]]; then
     echo "      Installing Node.js 20 LTS..."
+    echo "      Kernel arch: $ARCH | Userland arch: $DEB_ARCH"
 
-    if [ "$ARCH" = "armv7l" ] || [ "$ARCH" = "armv6l" ]; then
-        # 32-bit ARM — NodeSource does not support armhf, use unofficial builds
-        echo "      Detected 32-bit ARM ($ARCH) — using unofficial Node.js builds..."
+    if [ "$DEB_ARCH" = "armhf" ] || [ "$ARCH" = "armv7l" ] || [ "$ARCH" = "armv6l" ]; then
+        # 32-bit ARM userland — NodeSource does not support armhf, use unofficial builds
+        echo "      Detected 32-bit ARM — using unofficial Node.js builds..."
         curl -fsSL "https://unofficial-builds.nodejs.org/download/release/${NODE_VERSION}/node-${NODE_VERSION}-linux-armv7l.tar.xz" -o /tmp/node.tar.xz
         sudo tar -xf /tmp/node.tar.xz -C /usr/local --strip-components=1
         rm -f /tmp/node.tar.xz
-    elif [ "$ARCH" = "aarch64" ]; then
+    elif [ "$DEB_ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
         # 64-bit ARM — NodeSource works
         curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
         sudo apt-get install -y nodejs
