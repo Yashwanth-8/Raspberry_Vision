@@ -51,9 +51,16 @@ class PiCamera:
         config = self._cam.create_preview_configuration(
             main={
                 "size": (self._width, self._height),
-                "format": "BGR888",
+                # RGB888 is what libcamera natively provides from the ISP.
+                # Requesting BGR888 results in the channels being served in
+                # RGB order on most Pi Camera modules, producing an inverted
+                # colour image. We capture as RGB and flip to BGR below.
+                "format": "RGB888",
             },
             controls={"FrameRate": self._framerate},
+            # Use only 2 buffers to minimise the frame-queue depth and
+            # reduce end-to-end capture latency.
+            buffer_count=2,
         )
         self._cam.configure(config)
         self._cam.start()
@@ -62,7 +69,9 @@ class PiCamera:
 
     def _capture_loop_picamera2(self) -> None:
         while self._running:
-            frame = self._cam.capture_array()  # returns BGR888 numpy array
+            frame = self._cam.capture_array()  # returns RGB888 numpy array
+            # Flip RGB → BGR in-place (required by OpenCV / YuNet)
+            frame = frame[:, :, ::-1].copy()
             with self._lock:
                 self._frame = frame
 

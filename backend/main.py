@@ -113,7 +113,7 @@ async def camera_loop(
     loop = asyncio.get_event_loop()
     target_interval = 1.0 / 30  # aim for ~30 fps broadcasts
     _preview_counter = 0
-    PREVIEW_SKIP = 2  # send JPEG preview every 2 frames (~15 fps)
+    PREVIEW_SKIP = 3  # send JPEG preview every 3 frames (~10 fps) — reduces Pi CPU load
 
     while True:
         t0 = time.monotonic()
