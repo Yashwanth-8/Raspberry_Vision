@@ -62,24 +62,20 @@ class PiCamera:
 
     # ------------------------------------------------------------------
     def _start_picamera2(self) -> None:
-        import cv2  # noqa: F401 — needed for YUV conversion in capture loop
+        import cv2
         self._cv2 = cv2
 
         self._cam = Picamera2()
         config = self._cam.create_preview_configuration(
             main={
-                # 720p for the browser preview
+                # Single stream: 720p RGB888 for preview.
+                # The detect frame is produced by resizing main_bgr in the
+                # capture loop — avoids the YUV420 stride/padding issue that
+                # would silently kill the capture thread on Pi 4.
                 "size": (self._width, self._height),
-                # RGB888: libcamera ISP native output — avoids BGR888 colour inversion
                 "format": "RGB888",
             },
-            lores={
-                # Low-res for fast YuNet detection — lores only supports YUV420
-                "size": (DETECT_WIDTH, DETECT_HEIGHT),
-                "format": "YUV420",
-            },
             controls={"FrameRate": self._framerate},
-            # 2 buffers = minimum frame-queue depth → lowest end-to-end latency
             buffer_count=2,
         )
         self._cam.configure(config)
@@ -92,23 +88,20 @@ class PiCamera:
     def _capture_loop_picamera2(self) -> None:
         cv2 = self._cv2
         while self._running:
-            # Capture both streams atomically from the same camera request
             request = self._cam.capture_request()
             try:
-                main_arr  = request.make_array("main")   # (720, 1280, 3) RGB
-                lores_arr = request.make_array("lores")  # (360, 320)   YUV420p
+                main_arr = request.make_array("main")   # (720, 1280, 3) RGB888
             finally:
                 request.release()
 
-            # RGB → BGR for OpenCV / browser JPEG encoding
+            # RGB → BGR for OpenCV
             main_bgr = main_arr[:, :, ::-1].copy()
-
-            # YUV420p → BGR for YuNet (picamera2 lores is I420 layout)
-            lores_bgr = cv2.cvtColor(lores_arr, cv2.COLOR_YUV2BGR_I420)
+            # Resize to detection canvas (fast, deterministic, no format issues)
+            detect_bgr = cv2.resize(main_bgr, (DETECT_WIDTH, DETECT_HEIGHT))
 
             with self._lock:
                 self._frame = main_bgr
-                self._detect_frame = lores_bgr
+                self._detect_frame = detect_bgr
 
     # ------------------------------------------------------------------
     def _start_opencv(self) -> None:

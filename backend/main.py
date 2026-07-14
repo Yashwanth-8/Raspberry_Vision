@@ -109,11 +109,32 @@ async def camera_loop(
     while True:
         t0 = time.monotonic()
 
-        # ---- Grab detection frame (320×240 lores) ----
+        # ---- Grab detection frame (320×240 from camera) ----
         detect_frame = await loop.run_in_executor(None, camera.grab_detect_frame)
 
         if detect_frame is None:
-            await asyncio.sleep(0.01)
+            # Camera still starting up — send distance but mark attention as not ready
+            # so the frontend never gets stuck at attention_ok=true with no data.
+            distance_m     = ultrasonic.distance_m
+            raw_distance_m = ultrasonic.raw_distance_m
+            no_cam_msg = json.dumps({
+                "type": "frame",
+                "face_detected": False,
+                "face_count": 0,
+                "attention_ok": False,
+                "attention_reason": "camera_not_ready",
+                "distance": round(distance_m, 4),
+                "raw_distance": round(raw_distance_m, 4),
+                "confidence": 0.0,
+                "iris_px": None,
+                "focal_length_px": None,
+            })
+            if connected_clients:
+                await asyncio.gather(
+                    *[client.send(no_cam_msg) for client in connected_clients.copy()],
+                    return_exceptions=True,
+                )
+            await asyncio.sleep(0.05)
             continue
 
         # ---- Attention detection (CPU-bound → executor) ----
