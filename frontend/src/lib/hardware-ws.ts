@@ -33,8 +33,14 @@ export interface HardwareWSState {
     previewUrl: string | null;
     /** true when all attention rules pass (single face present) */
     attentionOk: boolean;
+    /** true only when backend detector is healthy */
+    attentionMonitoringActive: boolean;
     /** "ok" | "no_face" | "multiple_faces" | "camera_starting" | "detection_error" */
     attentionReason: string;
+    /** authoritative gate from backend for whether distance can drive the test */
+    distanceValid: boolean;
+    /** source of active distance signal (e.g. ultrasonic, tof) */
+    distanceSource: string;
 }
 
 /**
@@ -58,7 +64,10 @@ class HardwareWSManager {
         focalLengthPx: 0,
         previewUrl: null,
         attentionOk: true,
+        attentionMonitoringActive: false,
         attentionReason: "ok",
+        distanceValid: false,
+        distanceSource: "unknown",
     };
 
     static getInstance(): HardwareWSManager {
@@ -128,17 +137,23 @@ class HardwareWSManager {
                     msg.distance ?? 0,
                     msg.raw_distance ?? msg.distance ?? 0,
                     msg.confidence ?? 0,
+                    msg.distance_valid ?? false,
+                    msg.distance_source ?? "unknown",
                 );
 
                 // Update local state for consumers
+                const monitoringActive = msg.attention_monitoring_active ?? false;
                 this.state = {
                     ...this.state,
                     faceDetected: msg.face_detected ?? false,
                     faceCount: msg.face_count ?? 0,
                     irisPx: msg.iris_px ?? null,
                     focalLengthPx: msg.focal_length_px ?? 0,
-                    attentionOk: msg.attention_ok ?? true,
+                    attentionOk: monitoringActive ? (msg.attention_ok ?? true) : true,
+                    attentionMonitoringActive: monitoringActive,
                     attentionReason: msg.attention_reason ?? "ok",
+                    distanceValid: msg.distance_valid ?? false,
+                    distanceSource: msg.distance_source ?? "unknown",
                 };
                 this.notify();
             } catch {
@@ -149,7 +164,16 @@ class HardwareWSManager {
         this.ws.onclose = () => {
             clearTimeout(connectTimeout);
             if (this.state.previewUrl) URL.revokeObjectURL(this.state.previewUrl);
-            this.state = { ...this.state, piMode: false, faceDetected: false, faceCount: 0, previewUrl: null };
+            this.state = {
+                ...this.state,
+                piMode: false,
+                faceDetected: false,
+                faceCount: 0,
+                previewUrl: null,
+                attentionMonitoringActive: false,
+                distanceValid: false,
+                distanceSource: "unknown",
+            };
             this.notify();
             if (!this.destroyed) this.scheduleReconnect();
         };
@@ -195,7 +219,10 @@ export function useHardwareWS(): HardwareWSState {
         focalLengthPx: 0,
         previewUrl: null,
         attentionOk: true,
+        attentionMonitoringActive: false,
         attentionReason: "ok",
+        distanceValid: false,
+        distanceSource: "unknown",
     }));
 
     useEffect(() => {

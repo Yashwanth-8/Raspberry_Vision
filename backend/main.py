@@ -15,9 +15,12 @@ WebSocket message sent to all connected clients every frame:
     "attention_ok":     bool,       # false → frontend should pause the test
     "attention_reason": str,        # "ok" | "no_face" | "multiple_faces"
                                     #   | "camera_starting" | "detection_error"
+    "attention_monitoring_active": bool,  # false when detector unavailable/error
     "distance":         float,      # Kalman-filtered metres (from ultrasonic)
     "raw_distance":     float,      # unfiltered metres
     "confidence":       float,      # 1.0 when ultrasonic active, 0.0 if no reading
+    "distance_valid":   bool,       # authoritative gate for test progression
+    "distance_source":  str,        # "ultrasonic" (future-proof for ToF swap)
     "iris_px":          null,       # always null (ultrasonic handles distance)
     "focal_length_px":  null        # always null
 }
@@ -43,7 +46,7 @@ from websockets.server import WebSocketServerProtocol
 from camera import PiCamera
 from face_detection import FaceDetector
 from ultrasonic import UltrasonicSensor
-from constants import WS_HOST, WS_PORT
+from constants import WS_HOST, WS_PORT, SENSOR_TO_EYE_OFFSET_M
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,6 +59,18 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 connected_clients: Set[WebSocketServerProtocol] = set()
+
+
+def corrected_eye_distance(sensor_distance_m: float) -> float:
+    """
+    Convert sensor reading to approximate eye-to-screen distance.
+
+    The offset is provisional and intentionally kept in one place so we can
+    recalibrate or replace the distance sensor without touching call sites.
+    """
+    if sensor_distance_m <= 0:
+        return 0.0
+    return max(0.0, sensor_distance_m + SENSOR_TO_EYE_OFFSET_M)
 
 # ---------------------------------------------------------------------------
 # WebSocket handler
@@ -114,17 +129,22 @@ async def camera_loop(
             # Camera still warming up — send distance and let the test proceed.
             # Setting attention_ok=True here prevents the startup overlay from
             # blocking the user before the camera has produced its first frame.
-            distance_m     = ultrasonic.distance_m
+            sensor_distance_m = ultrasonic.distance_m
+            distance_m = corrected_eye_distance(sensor_distance_m)
             raw_distance_m = ultrasonic.raw_distance_m
+            distance_valid = ultrasonic.is_sensor_active and distance_m > 0
             no_cam_msg = json.dumps({
                 "type": "frame",
                 "face_detected": False,
                 "face_count": 0,
                 "attention_ok": True,
                 "attention_reason": "camera_starting",
+                "attention_monitoring_active": False,
                 "distance": round(distance_m, 4),
                 "raw_distance": round(raw_distance_m, 4),
                 "confidence": round(1.0 if ultrasonic.is_sensor_active else 0.0, 4),
+                "distance_valid": distance_valid,
+                "distance_source": "ultrasonic",
                 "iris_px": None,
                 "focal_length_px": None,
             })
@@ -143,6 +163,7 @@ async def camera_loop(
             # YuNet failed to load at startup — run without face detection
             detection = {"face_detected": False, "face_count": 0,
                          "attention_ok": True, "attention_reason": "detector_unavailable"}
+        attention_monitoring_active = detector is not None
 
         # Defensive guard: if face_detection.py returns an unexpected format
         # (e.g. old version without attention_ok), log a warning and continue
@@ -159,14 +180,17 @@ async def camera_loop(
                 "attention_ok":     True,               # benefit of the doubt on detection errors
                 "attention_reason": "detection_error",
             }
+            attention_monitoring_active = False
 
         # ---- Distance from HC-SR04 (non-blocking property read) ----
-        distance_m     = ultrasonic.distance_m
+        sensor_distance_m = ultrasonic.distance_m
+        distance_m = corrected_eye_distance(sensor_distance_m)
         raw_distance_m = ultrasonic.raw_distance_m
         # confidence is 1.0 ONLY when sensor is wired and returning valid readings.
         # When sensor is unplugged/out-of-range, is_sensor_active=False and
         # distance_m=0.0, so confidence=0.0 — frontend correctly blocks the test.
         confidence     = 1.0 if ultrasonic.is_sensor_active else 0.0
+        distance_valid = ultrasonic.is_sensor_active and distance_m > 0
 
         # ---- Build WebSocket JSON message ----
         message = json.dumps({
@@ -175,9 +199,12 @@ async def camera_loop(
             "face_count":       detection["face_count"],
             "attention_ok":     detection["attention_ok"],
             "attention_reason": detection["attention_reason"],
+            "attention_monitoring_active": attention_monitoring_active,
             "distance":         round(distance_m, 4),
             "raw_distance":     round(raw_distance_m, 4),
             "confidence":       round(confidence, 4),
+            "distance_valid":   distance_valid,
+            "distance_source":  "ultrasonic",
             "iris_px":          None,
             "focal_length_px":  None,
         })
@@ -271,7 +298,8 @@ async def main() -> None:
             pass
         finally:
             camera.stop()
-            detector.close()
+            if detector is not None:
+                detector.close()
             ultrasonic.stop()
             logger.info("Shutdown complete")
 
