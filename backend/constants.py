@@ -31,6 +31,18 @@ WS_HOST = "0.0.0.0"
 WS_PORT = 8765
 
 # Pi Camera config
+# main stream → 720p RGB888, sent as JPEG preview to the frontend
+# lores stream → 320×240 YUV420, fed into YuNet for attention detection
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
 CAMERA_FRAMERATE = 30
+DETECT_WIDTH = 320
+DETECT_HEIGHT = 240
+
+# HC-SR04 ultrasonic sensor GPIO pins (BCM numbering)
+ULTRASONIC_TRIGGER_PIN = 23
+ULTRASONIC_ECHO_PIN = 24
+
+# Attention-monitoring rules
+FACE_CENTRE_TOLERANCE = 0.25   # face cx must be within 25% of frame width from centre
+FACE_FORWARD_EYE_RATIO = 0.30  # eye separation must be > 30% of face bbox width

@@ -1,20 +1,171 @@
 """
-Face detection using OpenCV's built-in YuNet DNN face detector.
+Attention monitoring using YuNet face detector.
 
-Replaces the MediaPipe dependency which has unreliable installation on
-Raspberry Pi (no aarch64 wheel for Python 3.12/3.13).
+With the HC-SR04 ultrasonic sensor now handling all distance measurement,
+the camera's sole job is to verify the user is correctly engaged with the
+test and pause when they are not.
 
-YuNet is included in opencv-python-headless (already installed).
-The ONNX model file (~80 KB) is downloaded automatically on first run
-from the OpenCV model zoo.
+Detection always runs on a fixed 320×240 canvas (the camera lores stream)
+to avoid the setInputSize coordinate-scaling bug present in older OpenCV
+builds shipped with Raspberry Pi OS, and to keep inference fast (~8 ms on Pi 4).
 
-Output format is kept compatible with the existing distance.py:
-  - Landmark indices 468 / 473  → left / right eye centres  (IPD method)
-  - Landmark indices 234 / 454  → left / right cheek edges  (face-width method)
-  - Iris ring landmarks (469-472 / 474-477) are collapsed to eye centre so
-    estimate_from_iris() returns None (diameter = 0 < 3 px guard) —
-    IPD and face-width methods take over.
+process() returns:
+  {
+    "face_detected":    bool,
+    "face_count":       int,
+    "attention_ok":     bool,   # True → all rules pass, test may run
+    "attention_reason": str,    # "ok" | "no_face" | "multiple_faces"
+                                #   | "not_centred" | "looking_away"
+  }
 """
+
+import urllib.request
+from pathlib import Path
+import math
+
+import cv2
+import numpy as np
+
+from constants import (
+    DETECT_WIDTH, DETECT_HEIGHT,
+    FACE_CENTRE_TOLERANCE, FACE_FORWARD_EYE_RATIO,
+)
+
+# ---------------------------------------------------------------------------
+# YuNet model — downloaded automatically on first run (~80 KB)
+# ---------------------------------------------------------------------------
+
+_MODEL_URL = (
+    "https://github.com/opencv/opencv_zoo/raw/main/"
+    "models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+)
+_MODEL_PATH = Path(__file__).parent / "models" / "face_detection_yunet_2023mar.onnx"
+
+
+def _ensure_model() -> str:
+    if not _MODEL_PATH.exists():
+        _MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        print(f"[FaceDetector] Downloading YuNet model → {_MODEL_PATH} (~80 KB)…")
+        try:
+            urllib.request.urlretrieve(_MODEL_URL, _MODEL_PATH)
+            print("[FaceDetector] Model downloaded OK.")
+        except Exception as exc:
+            raise RuntimeError(
+                f"[FaceDetector] Could not download YuNet model: {exc}\n"
+                f"  Download manually from:\n  {_MODEL_URL}\n"
+                f"  and place at: {_MODEL_PATH}"
+            ) from exc
+    return str(_MODEL_PATH)
+
+
+# ---------------------------------------------------------------------------
+# FaceDetector — attention monitor
+# ---------------------------------------------------------------------------
+
+class FaceDetector:
+    """
+    Wraps cv2.FaceDetectorYN (YuNet) for attention monitoring.
+
+    The detector is created once at the fixed detection canvas size
+    (320×240). The process() method always resizes its input to that
+    size before calling detect(), so setInputSize is always called with
+    the same value — avoiding the coordinate-scaling bug in older OpenCV.
+    """
+
+    def __init__(
+        self,
+        max_num_faces: int = 2,          # detect up to 2 so we can flag intruders
+        score_threshold: float = 0.6,
+        nms_threshold: float = 0.3,
+        # Legacy kwargs kept for backward compat with main.py call-site
+        refine_landmarks: bool = True,
+        min_detection_confidence: float = 0.5,
+        min_tracking_confidence: float = 0.5,
+    ) -> None:
+        model_path = _ensure_model()
+        # Fixed size matching the detection canvas — never changes
+        self._detector = cv2.FaceDetectorYN.create(
+            model_path,
+            "",
+            (DETECT_WIDTH, DETECT_HEIGHT),
+            score_threshold,
+            nms_threshold,
+            max_num_faces,
+        )
+
+    def process(self, bgr_frame: np.ndarray) -> dict:
+        """
+        Detect faces and evaluate attention rules.
+
+        bgr_frame: any size BGR frame (will be resized to detection canvas).
+        Returns dict — see module docstring for keys.
+        """
+        # Always process at fixed canvas size → stable coordinate output
+        if bgr_frame.shape[:2] != (DETECT_HEIGHT, DETECT_WIDTH):
+            bgr_frame = cv2.resize(bgr_frame, (DETECT_WIDTH, DETECT_HEIGHT))
+
+        # setInputSize always receives the same value → no scaling bug
+        self._detector.setInputSize((DETECT_WIDTH, DETECT_HEIGHT))
+        _, faces = self._detector.detect(bgr_frame)
+
+        # ---- No face ----
+        if faces is None or len(faces) == 0:
+            return {
+                "face_detected": False,
+                "face_count": 0,
+                "attention_ok": False,
+                "attention_reason": "no_face",
+            }
+
+        # Sort by confidence (highest first)
+        faces = sorted(faces, key=lambda f: f[14], reverse=True)
+        face_count = len(faces)
+
+        # ---- Multiple people / obstruction ----
+        if face_count > 1:
+            return {
+                "face_detected": True,
+                "face_count": face_count,
+                "attention_ok": False,
+                "attention_reason": "multiple_faces",
+            }
+
+        # ---- Single face — evaluate positioning rules ----
+        primary = faces[0]
+        x, y, bw, bh       = primary[0], primary[1], primary[2], primary[3]
+        right_eye_x         = primary[4]
+        left_eye_x          = primary[6]
+        left_eye_y          = primary[7]
+        right_eye_y         = primary[5]
+
+        # Rule 1: Face must be roughly centred in the frame
+        face_cx   = x + bw / 2
+        frame_cx  = DETECT_WIDTH / 2
+        is_centred = abs(face_cx - frame_cx) < DETECT_WIDTH * FACE_CENTRE_TOLERANCE
+
+        # Rule 2: Both eyes must be visible and separated (head facing forward)
+        # When the user turns their head sideways the inter-eye pixel distance
+        # collapses well below 30% of the bounding box width.
+        eye_sep_px  = math.hypot(left_eye_x - right_eye_x, left_eye_y - right_eye_y)
+        is_facing   = eye_sep_px > bw * FACE_FORWARD_EYE_RATIO
+
+        attention_ok = is_centred and is_facing
+
+        if not attention_ok:
+            reason = "not_centred" if not is_centred else "looking_away"
+        else:
+            reason = "ok"
+
+        return {
+            "face_detected": True,
+            "face_count": face_count,
+            "attention_ok": attention_ok,
+            "attention_reason": reason,
+        }
+
+    def close(self) -> None:
+        pass  # cv2 objects are reference-counted
+
 
 import urllib.request
 from pathlib import Path
