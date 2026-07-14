@@ -41,8 +41,3 @@ DETECT_HEIGHT = 240
 # HC-SR04 ultrasonic sensor GPIO pins (BCM numbering)
 ULTRASONIC_TRIGGER_PIN = 23
 ULTRASONIC_ECHO_PIN = 24
-
-# Attention-monitoring rules
-FACE_CENTRE_TOLERANCE = 0.25   # face cx must be within 25% of frame width from centre
-FACE_FORWARD_EYE_RATIO = 0.45  # eye separation must be > 45% of face bbox width
-                                # (catches ~30° head turns; 0.30 only caught ~60°)

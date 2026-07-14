@@ -4,12 +4,12 @@
  * WebSocket client that connects to the Python backend running on the
  * Raspberry Pi at ws://localhost:8765.
  *
- * When connected (Pi mode), distance + face data are pushed from Python
- * (MediaPipe + Pi Camera) into the Zustand store — replacing the
- * browser-side MediaPipe pipeline entirely.
+ * When connected (Pi mode), distance + face data are pushed from the
+ * Python backend (HC-SR04 ultrasonic + YuNet via Pi Camera) into the
+ * Zustand store — replacing the browser-side MediaPipe pipeline entirely.
  *
  * Usage:
- *   const { piMode, faceDetected, faceCount } = useHardwareWS();
+ *   const { piMode, faceDetected, attentionOk } = useHardwareWS();
  *
  * The hook is safe to call on any screen. On a normal laptop (no backend
  * running), piMode stays false and nothing changes.
@@ -31,9 +31,9 @@ export interface HardwareWSState {
     focalLengthPx: number;
     /** Object URL of the latest JPEG preview frame from the Pi camera */
     previewUrl: string | null;
-    /** true when all attention rules pass (face centred, facing forward, single face) */
+    /** true when all attention rules pass (single face present) */
     attentionOk: boolean;
-    /** Reason when attentionOk is false: "ok" | "no_face" | "multiple_faces" | "not_centred" | "looking_away" */
+    /** "ok" | "no_face" | "multiple_faces" | "camera_starting" | "detection_error" */
     attentionReason: string;
 }
 

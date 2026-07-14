@@ -68,7 +68,7 @@ export default function TestScreen() {
     const animFrameRef = useRef<number>(0);
 
     // Pi hardware mode
-    const { piMode, faceDetected: piFaceDetected, faceCount: piFaceCount, attentionOk: piAttentionOk, attentionReason: piAttentionReason } = useHardwareWS();
+    const { piMode, faceDetected: piFaceDetected, faceCount: piFaceCount, attentionOk: piAttentionOk, attentionReason: piAttentionReason, previewUrl: piPreviewUrl } = useHardwareWS();
     const piProbeCompleteRef = useRef(false);
     useEffect(() => {
         const t = setTimeout(() => { piProbeCompleteRef.current = true; }, 1600);
@@ -990,12 +990,20 @@ export default function TestScreen() {
                 <div className="flex items-center justify-between px-6 py-4 border-t border-white/5">
                     {/* Mini camera feed */}
                     <div className="relative w-24 h-16 rounded-lg overflow-hidden bg-surface border border-white/5">
-                        <video
-                            ref={videoRef}
-                            className="absolute inset-0 w-full h-full object-cover -scale-x-100"
-                            playsInline
-                            muted
-                        />
+                        {piMode && piPreviewUrl ? (
+                            <img
+                                src={piPreviewUrl}
+                                className="absolute inset-0 w-full h-full object-cover -scale-x-100"
+                                alt="camera preview"
+                            />
+                        ) : (
+                            <video
+                                ref={videoRef}
+                                className="absolute inset-0 w-full h-full object-cover -scale-x-100"
+                                playsInline
+                                muted
+                            />
+                        )}
                         <canvas ref={canvasRef} className="hidden" />
                         {cameraActive && (
                             <div className="absolute top-1 left-1">

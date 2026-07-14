@@ -14,7 +14,7 @@ WebSocket message sent to all connected clients every frame:
     "face_count":       int,
     "attention_ok":     bool,       # false → frontend should pause the test
     "attention_reason": str,        # "ok" | "no_face" | "multiple_faces"
-                                    #   | "not_centred" | "looking_away"
+                                    #   | "camera_starting" | "detection_error"
     "distance":         float,      # Kalman-filtered metres (from ultrasonic)
     "raw_distance":     float,      # unfiltered metres
     "confidence":       float,      # 1.0 when ultrasonic active, 0.0 if no reading

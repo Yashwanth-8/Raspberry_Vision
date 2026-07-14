@@ -1,9 +1,11 @@
 """
 Pi Camera capture using picamera2 (Raspberry Pi OS Bookworm standard).
 
-Single main stream: 1280×720 RGB888 for the browser preview.
+Single main stream: 1280×720 XRGB8888 for the browser preview.
+XRGB8888 is delivered by picamera2 as BGRX byte order on all Pi Camera
+modules — dropping the padding byte gives correct BGR for OpenCV.
 The detection frame (320×240 BGR) is produced by resizing the main frame
-in the capture loop — avoids the YUV420 stride/padding crash on Pi 4.
+in the capture loop.
 
 Falls back to a single OpenCV webcam stream (resized for both uses) when
 picamera2 is not available (laptop / dev environment).
