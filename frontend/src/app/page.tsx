@@ -3,9 +3,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useAppStore } from "@/lib/store";
 import LandingScreen from "@/components/screens/LandingScreen";
-import CalibrationScreen from "@/components/screens/CalibrationScreen";
-import IPDScreen from "@/components/screens/IPDScreen";
-import MobileCalibrationScreen from "@/components/screens/MobileCalibrationScreen";
 import CameraSetupScreen from "@/components/screens/CameraSetupScreen";
 import TestScreen from "@/components/screens/TestScreen";
 import ResultsScreen from "@/components/screens/ResultsScreen";
@@ -32,9 +29,6 @@ export default function Home() {
           className="min-h-screen"
         >
           {screen === "landing" && <LandingScreen />}
-          {screen === "calibration" && <CalibrationScreen />}
-          {screen === "ipd" && <IPDScreen />}
-          {screen === "mobile-calibration" && <MobileCalibrationScreen />}
           {screen === "camera-setup" && <CameraSetupScreen />}
           {screen === "test" && <TestScreen />}
           {screen === "results" && <ResultsScreen />}

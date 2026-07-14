@@ -75,9 +75,9 @@ const EyeIcon = () => (
 
 const features = [
     {
-        icon: "📸",
-        title: "Camera-Powered",
-        desc: "Uses your device camera to measure exact distance — no extra hardware needed",
+        icon: "�",
+        title: "Ultrasonic Distance",
+        desc: "HC-SR04 sensor measures exact sitting distance — precise, automatic, no manual adjustment",
     },
     {
         icon: "🎯",
@@ -86,8 +86,8 @@ const features = [
     },
     {
         icon: "🔒",
-        title: "Stability Guard",
-        desc: "Auto-locks if you move or tilt — ensures clinically valid results",
+        title: "Attention Monitor",
+        desc: "Camera pauses the test automatically if you look away or leave the frame",
     },
 ];
 
@@ -129,8 +129,9 @@ export default function LandingScreen() {
             useAppStore.getState().setPatientInfo(null);
         }
 
-        // Skip calibration screen entirely — go straight to IPD
-        setScreen("ipd");
+        // Go straight to camera setup — IPD and manual calibration are not
+        // needed in hardware mode (distance comes from HC-SR04 sensor).
+        setScreen("camera-setup");
     };
 
     return (
