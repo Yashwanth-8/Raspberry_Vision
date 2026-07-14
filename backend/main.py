@@ -138,6 +138,22 @@ async def camera_loop(
         # ---- Attention detection (CPU-bound → executor) ----
         detection = await loop.run_in_executor(None, detector.process, detect_frame)
 
+        # Defensive guard: if face_detection.py returns an unexpected format
+        # (e.g. old version without attention_ok), log a warning and continue
+        # safely instead of crashing the whole server.
+        if not isinstance(detection, dict) or "attention_ok" not in detection:
+            logger.warning(
+                "detector.process() returned unexpected format: %s — "
+                "check face_detection.py version. Treating as no_face.",
+                type(detection).__name__,
+            )
+            detection = {
+                "face_detected": detection.get("face_detected", False) if isinstance(detection, dict) else False,
+                "face_count":    detection.get("face_count", 0)        if isinstance(detection, dict) else 0,
+                "attention_ok":     False,
+                "attention_reason": "detection_error",
+            }
+
         # ---- Distance from HC-SR04 (non-blocking property read) ----
         distance_m     = ultrasonic.distance_m
         raw_distance_m = ultrasonic.raw_distance_m
