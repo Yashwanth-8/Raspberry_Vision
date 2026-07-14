@@ -31,6 +31,10 @@ export interface HardwareWSState {
     focalLengthPx: number;
     /** Object URL of the latest JPEG preview frame from the Pi camera */
     previewUrl: string | null;
+    /** true when all attention rules pass (face centred, facing forward, single face) */
+    attentionOk: boolean;
+    /** Reason when attentionOk is false: "ok" | "no_face" | "multiple_faces" | "not_centred" | "looking_away" */
+    attentionReason: string;
 }
 
 /**
@@ -53,6 +57,8 @@ class HardwareWSManager {
         irisPx: null,
         focalLengthPx: 0,
         previewUrl: null,
+        attentionOk: true,
+        attentionReason: "ok",
     };
 
     static getInstance(): HardwareWSManager {
@@ -131,6 +137,8 @@ class HardwareWSManager {
                     faceCount: msg.face_count ?? 0,
                     irisPx: msg.iris_px ?? null,
                     focalLengthPx: msg.focal_length_px ?? 0,
+                    attentionOk: msg.attention_ok ?? true,
+                    attentionReason: msg.attention_reason ?? "ok",
                 };
                 this.notify();
             } catch {
@@ -186,6 +194,8 @@ export function useHardwareWS(): HardwareWSState {
         irisPx: null,
         focalLengthPx: 0,
         previewUrl: null,
+        attentionOk: true,
+        attentionReason: "ok",
     }));
 
     useEffect(() => {

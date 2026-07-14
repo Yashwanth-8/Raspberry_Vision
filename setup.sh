@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+   #!/usr/bin/env bash
 # setup.sh — One-time setup script for Nadi Hardware on Raspberry Pi
 #
 # Run this ONCE after cloning the repo on the Pi:
@@ -28,6 +28,8 @@ sudo apt-get install -y \
     python3-venv \
     python3-numpy \
     python3-opencv \
+    python3-gpiozero \
+    python3-rpi.gpio \
     curl \
     git
 
@@ -46,7 +48,7 @@ python3 -m venv --system-site-packages .venv
 
 # Activate and install remaining pip packages
 "$BACKEND_DIR/.venv/bin/pip3" install --upgrade pip
-"$BACKEND_DIR/.venv/bin/pip3" install "websockets>=12.0,<14.0"
+"$BACKEND_DIR/.venv/bin/pip3" install "websockets>=12.0,<14.0" "gpiozero>=2.0"
 
 echo "      Backend venv ready at: $BACKEND_DIR/.venv"
 echo "      websockets: $("$BACKEND_DIR/.venv/bin/python3" -c 'import websockets; print(websockets.__version__)')"

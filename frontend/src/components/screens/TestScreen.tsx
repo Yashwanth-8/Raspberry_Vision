@@ -68,7 +68,7 @@ export default function TestScreen() {
     const animFrameRef = useRef<number>(0);
 
     // Pi hardware mode
-    const { piMode, faceDetected: piFaceDetected, faceCount: piFaceCount } = useHardwareWS();
+    const { piMode, faceDetected: piFaceDetected, faceCount: piFaceCount, attentionOk: piAttentionOk, attentionReason: piAttentionReason } = useHardwareWS();
     const piProbeCompleteRef = useRef(false);
     useEffect(() => {
         const t = setTimeout(() => { piProbeCompleteRef.current = true; }, 1600);
@@ -187,11 +187,13 @@ export default function TestScreen() {
         setCurrentFilteredDist(piStoreDistance);
     }, [piMode, piStoreDistance]);
 
-    // Keep lastFaceSeenRef current in Pi mode so face-lost cheat detection works correctly
+    // Keep lastFaceSeenRef current in Pi mode.
+    // Use attentionOk rather than faceDetected: only counts as "seen" when the
+    // user is correctly positioned and looking at the screen.
     useEffect(() => {
-        if (!piMode || !piFaceDetected) return;
+        if (!piMode || !piAttentionOk) return;
         lastFaceSeenRef.current = Date.now();
-    }, [piMode, piFaceDetected]);
+    }, [piMode, piAttentionOk]);
 
     // Start camera + face mesh
     useEffect(() => {
@@ -656,14 +658,15 @@ export default function TestScreen() {
     // Multiple faces lock state
     const [multiFaceLock, setMultiFaceLock] = useState(false);
 
-    // Update multiFaceLock: Pi path uses piFaceCount; browser path uses ref
+    // Update multiFaceLock: Pi path uses attentionReason; browser path uses ref
     useEffect(() => {
         if (piMode) {
-            setMultiFaceLock(piFaceCount > 1);
-            if (piFaceCount > 1 && !multiFaceFlaggedRef.current) {
+            const isMultiFace = piAttentionReason === "multiple_faces";
+            setMultiFaceLock(isMultiFace);
+            if (isMultiFace && !multiFaceFlaggedRef.current) {
                 multiFaceFlaggedRef.current = true;
                 cheatingFlagsRef.current.push({ type: "multiple_faces", timestamp: Date.now() });
-            } else if (piFaceCount <= 1) {
+            } else if (!isMultiFace) {
                 multiFaceFlaggedRef.current = false;
             }
             return;
@@ -673,10 +676,26 @@ export default function TestScreen() {
             setMultiFaceLock(multiFaceFlaggedRef.current);
         }, 100);
         return () => clearInterval(interval);
-    }, [piMode, piFaceCount]);
+    }, [piMode, piAttentionReason]);
 
     return (
         <div className="relative min-h-screen flex flex-col" tabIndex={0}>
+            {/* Attention overlay — user not looking at screen (Pi mode only) */}
+            {piMode && !piAttentionOk && piAttentionReason !== "multiple_faces" && (
+                <div className="absolute inset-0 z-50" style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', background: 'rgba(0,0,0,0.4)' }}>
+                    <div className="flex flex-col items-center justify-center h-full">
+                        <div className="glass rounded-3xl px-10 py-10 text-center max-w-xs w-full">
+                            <h3 className="text-xl font-bold text-text-primary mb-2">Look at the Screen</h3>
+                            <p className="text-lg text-primary font-mono font-bold mb-2">
+                                {piAttentionReason === "no_face" ? "No face detected" :
+                                 piAttentionReason === "not_centred" ? "Please centre yourself" :
+                                 "Please face forward"}
+                            </p>
+                            <p className="text-xs text-text-secondary">Test paused until you are correctly positioned.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Multiple faces lock overlay */}
             {multiFaceLock && (
                 <div className="absolute inset-0 z-50" style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', background: 'rgba(0,0,0,0.3)' }}>
