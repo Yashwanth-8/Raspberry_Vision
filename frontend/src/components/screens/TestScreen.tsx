@@ -409,6 +409,14 @@ export default function TestScreen() {
                     }
                 }
             } else if (stab === "UNLOCKED") {
+                // Continuously refresh lastFaceSeenRef while face is present.
+                // Without this, the ref only updates on piAttentionOk TRANSITIONS
+                // (false→true), so after 2s of continuous face detection the
+                // face_lost flag fires even with a face right there.
+                if (piAttentionOkRef.current) {
+                    lastFaceSeenRef.current = Date.now();
+                }
+
                 const drift = Math.abs(dist - locked) * 100;
                 if (drift > 30) {
                     useAppStore.getState().setStability("LOCKED");
@@ -632,11 +640,17 @@ export default function TestScreen() {
         setScreen("results");
     };
 
-    // Calculate E size
+    // Calculate E size.
+    // During positioning (LOCKED/STABILIZING): size to live currentFilteredDist so
+    // the user can see the E responding to their distance — confirms the sensor works.
+    // During test (UNLOCKED): size to lockedDistance which stays fixed for accuracy.
+    const displayDistance = stability === "UNLOCKED"
+        ? lockedDistance
+        : (currentFilteredDist > 0 ? currentFilteredDist : lockedDistance);
     const eHeightPx =
-        lockedDistance > 0 && currentLevel
-            ? optotypeHeightPx(lockedDistance, currentLevel.arcMinPerStroke, mmPerPx)
-            : 100; // fallback when not locked
+        displayDistance > 0 && currentLevel
+            ? optotypeHeightPx(displayDistance, currentLevel.arcMinPerStroke, mmPerPx)
+            : 100;
 
     const eRotation = directionToRotation(currentDirection);
     const eStrokeWidth = eHeightPx / 5;
@@ -763,7 +777,11 @@ export default function TestScreen() {
                 </div>
                 <div className="flex items-center gap-4">
                     <span className="text-sm font-mono text-text-muted">
-                        d = {lockedDistance > 0 ? `${lockedDistance.toFixed(2)}m` : "---"}
+                        {stability === "UNLOCKED" && lockedDistance > 0
+                            ? `d = ${lockedDistance.toFixed(2)}m`
+                            : currentFilteredDist > 0
+                                ? `d = ${currentFilteredDist.toFixed(2)}m`
+                                : "d = ---"}
                     </span>
                     <span
                         className={`px-2 py-1 rounded-full text-xs font-medium ${stability === "UNLOCKED"
