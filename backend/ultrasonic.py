@@ -12,6 +12,8 @@ The frontend correctly blocks the test when confidence < 0.5.
 import threading
 import time
 import logging
+from collections import deque
+from statistics import median
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -44,15 +46,18 @@ class UltrasonicSensor:
     ) -> None:
         self._distance_m: float = 0.0
         self._raw_m: float = 0.0
-        self._last_valid_time: float = 0.0   # monotonic; 0 = no valid reading yet
+        self._last_valid_time: float = 0.0
+        # Rolling buffer for median pre-filter: rejects outlier spikes
+        # (e.g. wall reflections giving 1.5m when person is at 0.6m)
+        self._buffer: deque = deque(maxlen=5)
         self._lock = threading.Lock()
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
         self._kalman = KalmanFilter1D(
             initial_estimate=0.6,
-            process_noise=0.02,
-            measurement_noise=0.015,
+            process_noise=0.01,    # moderate — median filter already removes spikes
+            measurement_noise=0.02,
         )
 
         if GPIOZERO_AVAILABLE:
@@ -92,11 +97,16 @@ class UltrasonicSensor:
             if self._use_gpio and self._sensor is not None:
                 raw = self._sensor.distance  # metres, or None if no echo received
                 if raw is not None and _MIN_M < raw < _MAX_M:
-                    filtered = self._kalman.update(raw)
-                    with self._lock:
-                        self._raw_m = raw
-                        self._distance_m = filtered
-                        self._last_valid_time = time.monotonic()
+                    # Add to rolling buffer and compute median to reject outlier spikes
+                    # (e.g. wall reflections, electrical noise bursts)
+                    self._buffer.append(raw)
+                    if len(self._buffer) >= 3:
+                        stable_raw = median(self._buffer)
+                        filtered = self._kalman.update(stable_raw)
+                        with self._lock:
+                            self._raw_m = raw         # actual sensor reading for diagnostics
+                            self._distance_m = filtered
+                            self._last_valid_time = time.monotonic()
             time.sleep(0.06)   # ~17 Hz matches HC-SR04 max update rate
 
     # Sensor is considered active when GPIO is enabled AND a valid reading

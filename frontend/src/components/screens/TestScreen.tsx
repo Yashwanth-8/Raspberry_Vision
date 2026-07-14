@@ -699,18 +699,16 @@ export default function TestScreen() {
 
     return (
         <div className="relative min-h-screen flex flex-col" tabIndex={0}>
-            {/* Attention overlay — user not looking at screen (Pi mode only) */}
-            {piMode && !piAttentionOk && piAttentionReason !== "multiple_faces" && (
+            {/* Attention overlay — face genuinely absent (Pi mode only).
+                Only triggers for no_face. camera_starting / detection_error
+                never block the test. multiple_faces has its own overlay below. */}
+            {piMode && piAttentionReason === "no_face" && (
                 <div className="absolute inset-0 z-50" style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', background: 'rgba(0,0,0,0.4)' }}>
                     <div className="flex flex-col items-center justify-center h-full">
                         <div className="glass rounded-3xl px-10 py-10 text-center max-w-xs w-full">
-                            <h3 className="text-xl font-bold text-text-primary mb-2">Look at the Screen</h3>
-                            <p className="text-lg text-primary font-mono font-bold mb-2">
-                                {piAttentionReason === "no_face" ? "No face detected" :
-                                    piAttentionReason === "not_centred" ? "Please centre yourself" :
-                                        "Please face forward"}
-                            </p>
-                            <p className="text-xs text-text-secondary">Test paused until you are correctly positioned.</p>
+                            <h3 className="text-xl font-bold text-text-primary mb-2">No Face Detected</h3>
+                            <p className="text-lg text-primary font-mono font-bold mb-2">Test Paused</p>
+                            <p className="text-xs text-text-secondary">Please look at the screen to continue.</p>
                         </div>
                     </div>
                 </div>

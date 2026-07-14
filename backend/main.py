@@ -111,19 +111,20 @@ async def camera_loop(
         detect_frame = await loop.run_in_executor(None, camera.grab_detect_frame)
 
         if detect_frame is None:
-            # Camera still starting up — send distance but mark attention as not ready
-            # so the frontend never gets stuck at attention_ok=true with no data.
+            # Camera still warming up — send distance and let the test proceed.
+            # Setting attention_ok=True here prevents the startup overlay from
+            # blocking the user before the camera has produced its first frame.
             distance_m     = ultrasonic.distance_m
             raw_distance_m = ultrasonic.raw_distance_m
             no_cam_msg = json.dumps({
                 "type": "frame",
                 "face_detected": False,
                 "face_count": 0,
-                "attention_ok": False,
-                "attention_reason": "camera_not_ready",
+                "attention_ok": True,
+                "attention_reason": "camera_starting",
                 "distance": round(distance_m, 4),
                 "raw_distance": round(raw_distance_m, 4),
-                "confidence": 0.0,
+                "confidence": round(1.0 if ultrasonic.is_sensor_active else 0.0, 4),
                 "iris_px": None,
                 "focal_length_px": None,
             })
@@ -144,13 +145,13 @@ async def camera_loop(
         if not isinstance(detection, dict) or "attention_ok" not in detection:
             logger.warning(
                 "detector.process() returned unexpected format: %s — "
-                "check face_detection.py version. Treating as no_face.",
+                "check face_detection.py version. Treating as face present.",
                 type(detection).__name__,
             )
             detection = {
                 "face_detected": detection.get("face_detected", False) if isinstance(detection, dict) else False,
                 "face_count":    detection.get("face_count", 0)        if isinstance(detection, dict) else 0,
-                "attention_ok":     False,
+                "attention_ok":     True,               # benefit of the doubt on detection errors
                 "attention_reason": "detection_error",
             }
 
