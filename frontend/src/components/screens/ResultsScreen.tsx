@@ -52,7 +52,10 @@ export default function ResultsScreen() {
     const distCorrLogMAR = Math.log10(stdDistM) - Math.log10(Math.max(testResult.testDistance, 0.1));
 
     // Ambient light label
+    // In Pi hardware mode the browser has no local camera, so the canvas
+    // sampling returns 0 — display "Not measured" rather than "Low".
     const ambientLabel =
+        testResult.ambientLightEstimate === 0 ? "Not measured" :
         testResult.ambientLightEstimate < 60 ? "Low" :
             testResult.ambientLightEstimate < 160 ? "Adequate" : "Bright";
 
