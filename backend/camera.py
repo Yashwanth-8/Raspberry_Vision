@@ -65,12 +65,13 @@ class PiCamera:
         self._cam = Picamera2()
         config = self._cam.create_preview_configuration(
             main={
-                # Single stream: 720p RGB888 for preview.
-                # The detect frame is produced by resizing main_bgr in the
-                # capture loop — avoids the YUV420 stride/padding issue that
-                # would silently kill the capture thread on Pi 4.
                 "size": (self._width, self._height),
-                "format": "RGB888",
+                # XRGB8888 is the most universally supported format across all
+                # Pi Camera modules. picamera2 delivers it as BGRX byte order,
+                # so we simply drop the padding channel to get BGR for OpenCV.
+                # RGB888 and BGR888 have inconsistent byte-order behaviour across
+                # different Pi Camera hardware and libcamera versions.
+                "format": "XRGB8888",
             },
             controls={"FrameRate": self._framerate},
             buffer_count=2,
@@ -87,13 +88,13 @@ class PiCamera:
         while self._running:
             request = self._cam.capture_request()
             try:
-                main_arr = request.make_array("main")   # (720, 1280, 3) RGB888
+                main_arr = request.make_array("main")   # (H, W, 4) in BGRX order
             finally:
                 request.release()
 
-            # RGB → BGR for OpenCV
-            main_bgr = main_arr[:, :, ::-1].copy()
-            # Resize to detection canvas (fast, deterministic, no format issues)
+            # Drop the padding byte (X) — remaining channels are B, G, R → correct BGR
+            main_bgr = main_arr[:, :, :3].copy()
+            # Resize to detection canvas
             detect_bgr = cv2.resize(main_bgr, (DETECT_WIDTH, DETECT_HEIGHT))
 
             with self._lock:

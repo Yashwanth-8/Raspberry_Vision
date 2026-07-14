@@ -10,26 +10,21 @@ to avoid the setInputSize coordinate-scaling bug present in older OpenCV
 builds shipped with Raspberry Pi OS, and to keep inference fast (~8 ms on Pi 4).
 
 process() returns:
-  {
-    "face_detected":    bool,
-    "face_count":       int,
-    "attention_ok":     bool,   # True → all rules pass, test may run
+  {                                      
+    "face_detected":    bool,            
+    "face_count":       int,             
+    "attention_ok":     bool,   # True → single face present, test may run
     "attention_reason": str,    # "ok" | "no_face" | "multiple_faces"
-                                #   | "not_centred" | "looking_away"
   }
 """
 
 import urllib.request
 from pathlib import Path
-import math
 
 import cv2
 import numpy as np
 
-from constants import (
-    DETECT_WIDTH, DETECT_HEIGHT,
-    FACE_CENTRE_TOLERANCE, FACE_FORWARD_EYE_RATIO,
-)
+from constants import DETECT_WIDTH, DETECT_HEIGHT
 
 # ---------------------------------------------------------------------------
 # YuNet model — downloaded automatically on first run (~80 KB)
@@ -95,16 +90,22 @@ class FaceDetector:
 
     def process(self, bgr_frame: np.ndarray) -> dict:
         """
-        Detect faces and evaluate attention rules.
+        Detect faces and evaluate attention.
 
-        bgr_frame: any size BGR frame (will be resized to detection canvas).
-        Returns dict — see module docstring for keys.
+        Rules (prototype-safe):
+          - no_face       → attention_ok=False  (person left / camera blocked)
+          - multiple_faces → attention_ok=False  (intruder / cheating)
+          - single face   → attention_ok=True   (normal test condition)
+
+        Note: centring and gaze-direction checks were removed because at
+        320×240 the landmark positions are only accurate to ±3–5 px, making
+        those thresholds unreliable on a prototype rig. They can be re-added
+        once the physical enclosure enforces a fixed head position.
         """
         # Always process at fixed canvas size → stable coordinate output
         if bgr_frame.shape[:2] != (DETECT_HEIGHT, DETECT_WIDTH):
             bgr_frame = cv2.resize(bgr_frame, (DETECT_WIDTH, DETECT_HEIGHT))
 
-        # setInputSize always receives the same value → no scaling bug
         self._detector.setInputSize((DETECT_WIDTH, DETECT_HEIGHT))
         _, faces = self._detector.detect(bgr_frame)
 
@@ -117,7 +118,6 @@ class FaceDetector:
                 "attention_reason": "no_face",
             }
 
-        # Sort by confidence (highest first)
         faces = sorted(faces, key=lambda f: f[14], reverse=True)
         face_count = len(faces)
 
@@ -130,37 +130,12 @@ class FaceDetector:
                 "attention_reason": "multiple_faces",
             }
 
-        # ---- Single face — evaluate positioning rules ----
-        primary = faces[0]
-        x, y, bw, bh       = primary[0], primary[1], primary[2], primary[3]
-        right_eye_x         = primary[4]
-        left_eye_x          = primary[6]
-        left_eye_y          = primary[7]
-        right_eye_y         = primary[5]
-
-        # Rule 1: Face must be roughly centred in the frame
-        face_cx   = x + bw / 2
-        frame_cx  = DETECT_WIDTH / 2
-        is_centred = abs(face_cx - frame_cx) < DETECT_WIDTH * FACE_CENTRE_TOLERANCE
-
-        # Rule 2: Both eyes must be visible and separated (head facing forward)
-        # When the user turns their head sideways the inter-eye pixel distance
-        # collapses well below 30% of the bounding box width.
-        eye_sep_px  = math.hypot(left_eye_x - right_eye_x, left_eye_y - right_eye_y)
-        is_facing   = eye_sep_px > bw * FACE_FORWARD_EYE_RATIO
-
-        attention_ok = is_centred and is_facing
-
-        if not attention_ok:
-            reason = "not_centred" if not is_centred else "looking_away"
-        else:
-            reason = "ok"
-
+        # ---- Single face present → test may proceed ----
         return {
             "face_detected": True,
-            "face_count": face_count,
-            "attention_ok": attention_ok,
-            "attention_reason": reason,
+            "face_count": 1,
+            "attention_ok": True,
+            "attention_reason": "ok",
         }
 
     def close(self) -> None:
