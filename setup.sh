@@ -122,7 +122,7 @@ echo "      Frontend build complete."
 # Install local-ssl-proxy globally — used by start.sh to expose HTTPS on port 3443
 # so phones on the local network can access the app (camera APIs require HTTPS).
 echo "      Installing local-ssl-proxy (HTTPS proxy for LAN access)..."
-npm install -g local-ssl-proxy
+sudo npm install -g local-ssl-proxy
 echo "      local-ssl-proxy: $(local-ssl-proxy --version 2>/dev/null || echo 'installed')"
 echo ""
 
