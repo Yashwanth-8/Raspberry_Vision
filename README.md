@@ -61,7 +61,7 @@ Nadi Vision addresses this by automating the measurement of **visual acuity (VA)
 | Sensor | Role |
 |---|---|
 | **HC-SR04 ultrasonic** | Measures patient distance from the screen. Used to auto-scale the optotype to the correct angular size — the test is valid at any sitting distance. |
-| **Pi Camera** | Monitors attention. Pauses automatically if the patient looks away, covers the camera, or a second person enters the frame. |
+| **Pi Camera** | Monitors attention integrity. Current prototype pauses on no-face or multiple-faces; fine-grained gaze/eye-state checks are planned. |
 
 ### Test flow
 
@@ -188,7 +188,7 @@ This is the **prototype build for clinical validation**.
 ## What This Is
 
 A split-architecture version of NadiVision for Raspberry Pi:
-- **Python backend** (`backend/`) — reads Pi Camera, runs MediaPipe face detection, calculates distance, streams data over WebSocket to the frontend
+- **Python backend** (`backend/`) — reads Pi Camera, runs OpenCV YuNet face detection for attention state, reads HC-SR04 distance, streams data over WebSocket to the frontend
 - **Next.js frontend** (`frontend/`) — exact replica of the original app; receives distance/face data from backend via `ws://localhost:8765`; runs in Chromium kiosk mode
 
 The frontend auto-detects whether the Python backend is running. If yes → **Pi mode** (camera handled by Python). If no → **browser mode** (original MediaPipe JS path, works on any laptop).
@@ -427,8 +427,8 @@ npm run build
 Raspberry Pi
 ├── backend/main.py          ← WebSocket server (ws://localhost:8765)
 │     ├── camera.py          ← picamera2 frame capture
-│     ├── face_detection.py  ← MediaPipe FaceMesh (Python)
-│     ├── distance.py        ← iris/IPD/face-width estimators
+│     ├── face_detection.py  ← OpenCV YuNet attention monitor (Python)
+│     ├── ultrasonic.py      ← HC-SR04 distance + filtering
 │     └── kalman.py          ← 1D Kalman filter
 │
 └── frontend/                ← Next.js React app (http://localhost:3000)

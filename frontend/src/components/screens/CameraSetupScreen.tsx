@@ -38,7 +38,15 @@ export default function CameraSetupScreen() {
     const [modelLoading, setModelLoading] = useState(true);
 
     // Pi hardware mode — WebSocket connection to Python backend
-    const { piMode, faceDetected: piFaceDetected, faceCount, irisPx, previewUrl } = useHardwareWS();
+    const {
+        piMode,
+        faceDetected: piFaceDetected,
+        faceCount,
+        previewUrl,
+        attentionMonitoringActive,
+        distanceValid: wsDistanceValid,
+        distanceSource,
+    } = useHardwareWS();
     // Wait up to 1.5 s for WS probe before starting browser MediaPipe
     const [piProbeComplete, setPiProbeComplete] = useState(false);
     useEffect(() => {
@@ -49,6 +57,7 @@ export default function CameraSetupScreen() {
     // Read distance from store (works for both Pi and browser paths)
     const storeDistance = useAppStore((s) => s.distance);
     const storeConfidence = useAppStore((s) => s.distanceConfidence);
+    const storeDistanceValid = useAppStore((s) => s.distanceValid);
 
     // Effective values — Pi overrides browser
     // Use Kalman-filtered storeDistance (not rawDistance) — the median+Kalman
@@ -57,6 +66,7 @@ export default function CameraSetupScreen() {
     const effectiveFaceDetected = piMode ? piFaceDetected : faceDetected;
     const effectiveDistance = piMode ? storeDistance : currentDistance;
     const effectiveConfidence = piMode ? storeConfidence : confidence;
+    const effectiveDistanceValid = piMode ? (storeDistanceValid && wsDistanceValid) : effectiveDistance > 0 && effectiveConfidence > 0;
 
     // When Pi mode activates, mark camera ready immediately and send IPD
     useEffect(() => {
@@ -279,8 +289,9 @@ export default function CameraSetupScreen() {
                 ? "text-warning"
                 : "text-success";
 
-    const distanceBarWidth = Math.min(100, Math.max(0, (effectiveDistance / (isMobile ? 3 : 6)) * 100));
-    const isReady = cameraReady && !modelLoading && effectiveFaceDetected && effectiveDistance > 0.3;
+    const distanceBarWidth = Math.min(100, Math.max(0, (effectiveDistance / 3) * 100));
+    const attentionReady = !piMode || !attentionMonitoringActive || effectiveFaceDetected;
+    const isReady = cameraReady && !modelLoading && attentionReady && (!piMode ? effectiveDistance > 0.3 : effectiveDistanceValid);
 
     return (
         <div className="flex min-h-screen flex-col items-center justify-center px-6">
@@ -305,7 +316,9 @@ export default function CameraSetupScreen() {
                 </p>
                 <h2 className="text-3xl font-bold mb-2 text-center">Camera Setup</h2>
                 <p className="text-sm text-text-secondary mb-6 text-center max-w-md">
-                    Position yourself in front of the camera. Distance is measured automatically using face detection.
+                    {piMode
+                        ? "Position yourself in front of the camera. Distance is measured by the ultrasonic sensor."
+                        : "Position yourself in front of the camera. Distance is measured automatically using face detection."}
                 </p>
 
                 {error && (
@@ -393,6 +406,18 @@ export default function CameraSetupScreen() {
                     )}
                 </div>
 
+                {piMode && !effectiveDistanceValid && (
+                    <div className="mb-4 px-4 py-3 rounded-xl border border-warning/40 bg-warning/10 text-warning text-sm text-center">
+                        Ultrasonic sensor inactive or out of range. Please move into the 2–3 m zone.
+                    </div>
+                )}
+
+                {piMode && !attentionMonitoringActive && (
+                    <div className="mb-4 px-4 py-3 rounded-xl border border-danger/40 bg-danger/10 text-danger text-sm text-center">
+                        Attention monitoring unavailable. Test can continue, but this will be flagged in integrity checks.
+                    </div>
+                )}
+
                 {/* Distance readout bar */}
                 {effectiveDistance > 0 && (
                     <motion.div
@@ -419,8 +444,8 @@ export default function CameraSetupScreen() {
                         </div>
                         <div className="flex justify-between text-xs text-text-muted mt-1">
                             <span>0m</span>
-                            <span className="text-primary">Optimal: {isMobile ? "0.5–1.5m" : "2–5m"}</span>
-                            <span>{isMobile ? "3m" : "6m"}</span>
+                            <span className="text-primary">Optimal: 2–3m</span>
+                            <span>3m</span>
                         </div>
                     </motion.div>
                 )}
@@ -434,7 +459,7 @@ export default function CameraSetupScreen() {
                         transition={{ delay: 0.5 }}
                     >
                         {piMode
-                            ? `Pi Camera · iris=${irisPx?.toFixed(1) ?? "--"}px · Conf: ${(effectiveConfidence * 100).toFixed(0)}%`
+                            ? `Pi Camera · ${distanceSource} · ${effectiveDistanceValid ? "distance valid" : "distance invalid"} · monitor: ${attentionMonitoringActive ? "on" : "off"}`
                             : `Auto-calibrated · f=${Math.round(focalLength)}px · Conf: ${(effectiveConfidence * 100).toFixed(0)}%`}
                     </motion.div>
                 )}
@@ -451,7 +476,8 @@ export default function CameraSetupScreen() {
                         ? (!piProbeComplete ? "Detecting Pi mode..." : "Starting camera...")
                         : modelLoading ? "Loading AI model..."
                             : isReady ? "Start Vision Test →"
-                                : "Detecting face..."}
+                                : (piMode && !attentionMonitoringActive) ? "Waiting for valid distance..."
+                                    : "Detecting face..."}
                 </motion.button>
             </motion.div>
         </div>

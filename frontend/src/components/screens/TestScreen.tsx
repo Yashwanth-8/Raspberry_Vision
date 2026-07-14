@@ -68,7 +68,17 @@ export default function TestScreen() {
     const animFrameRef = useRef<number>(0);
 
     // Pi hardware mode
-    const { piMode, faceDetected: piFaceDetected, faceCount: piFaceCount, attentionOk: piAttentionOk, attentionReason: piAttentionReason, previewUrl: piPreviewUrl } = useHardwareWS();
+    const {
+        piMode,
+        faceDetected: piFaceDetected,
+        faceCount: piFaceCount,
+        attentionOk: piAttentionOk,
+        attentionReason: piAttentionReason,
+        attentionMonitoringActive: piAttentionMonitoringActive,
+        previewUrl: piPreviewUrl,
+        distanceValid: piWsDistanceValid,
+        distanceSource,
+    } = useHardwareWS();
     const piProbeCompleteRef = useRef(false);
     useEffect(() => {
         const t = setTimeout(() => { piProbeCompleteRef.current = true; }, 1600);
@@ -186,21 +196,17 @@ export default function TestScreen() {
 
     // Sync Pi distance into distRef (replaces browser MediaPipe path when piMode)
     const piStoreDistance = useAppStore((s) => s.distance);
-    const piDistanceConfidence = useAppStore((s) => s.distanceConfidence);
+    const piDistanceValid = useAppStore((s) => s.distanceValid);
     useEffect(() => {
         if (!piMode) return;
-        // Only accept a reading when the ultrasonic sensor is genuinely active
-        // (confidence=1.0). When sensor is disconnected, confidence=0 and
-        // distance=0 — reset distRef so the stability FSM stops and the test
-        // cannot proceed with stale or fabricated distance data.
-        if (piStoreDistance > 0 && piDistanceConfidence >= 0.5) {
+        if (piStoreDistance > 0 && piDistanceValid && piWsDistanceValid) {
             distRef.current = piStoreDistance;
             setCurrentFilteredDist(piStoreDistance);
         } else {
             distRef.current = 0;
             setCurrentFilteredDist(0);
         }
-    }, [piMode, piStoreDistance, piDistanceConfidence]);
+    }, [piMode, piStoreDistance, piDistanceValid, piWsDistanceValid]);
 
     // Keep lastFaceSeenRef current in Pi mode.
     // Use attentionOk rather than faceDetected: only counts as "seen" when the
@@ -444,7 +450,7 @@ export default function TestScreen() {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (stability !== "UNLOCKED") return;
             // In Pi mode: block input when attention monitor says user isn't engaged
-            if (piMode && !piAttentionOkRef.current) return;
+            if (piMode && piAttentionMonitoringActive && !piAttentionOkRef.current) return;
 
             let answered: EDirection | null = null;
             switch (e.key) {
@@ -462,13 +468,13 @@ export default function TestScreen() {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [stability, currentDirection, currentLevelIndex, currentTrialIndex]);
+    }, [stability, currentDirection, currentLevelIndex, currentTrialIndex, piMode, piAttentionMonitoringActive]);
 
     // Handle patient's answer
     const handleAnswer = useCallback(
         (answered: EDirection) => {
             // Block answers when Pi attention monitor says user isn't engaged
-            if (piMode && !piAttentionOkRef.current) return;
+            if (piMode && piAttentionMonitoringActive && !piAttentionOkRef.current) return;
             const correct = answered === currentDirection;
             const level = ACUITY_LEVELS[currentLevelIndex];
 
@@ -537,6 +543,7 @@ export default function TestScreen() {
         [
             currentDirection, currentLevelIndex, currentTrialIndex, lockedDistance,
             responses, addResponse, setCurrentLevel, setCurrentTrial, setCurrentDirection,
+            piMode, piAttentionMonitoringActive,
         ]
     );
 
@@ -651,9 +658,12 @@ export default function TestScreen() {
         displayDistance > 0 && currentLevel
             ? optotypeHeightPx(displayDistance, currentLevel.arcMinPerStroke, mmPerPx)
             : 100;
+    const MIN_STROKE_PX = 3;
+    const strokeTooSmall = (eHeightPx / 5) < MIN_STROKE_PX;
+    const renderedEHeightPx = Math.max(eHeightPx, MIN_STROKE_PX * 5);
 
     const eRotation = directionToRotation(currentDirection);
-    const eStrokeWidth = eHeightPx / 5;
+    const eStrokeWidth = renderedEHeightPx / 5;
 
     // Movement/tilt detection for instant lock/blur
     const [movementLocked, setMovementLocked] = useState(false);
@@ -727,6 +737,11 @@ export default function TestScreen() {
                     </div>
                 </div>
             )}
+            {piMode && !piAttentionMonitoringActive && (
+                <div className="absolute top-16 left-1/2 z-40 -translate-x-1/2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-2 text-xs text-warning">
+                    Attention monitoring unavailable. This session will be flagged in integrity checks.
+                </div>
+            )}
             {/* Multiple faces lock overlay */}
             {multiFaceLock && (
                 <div className="absolute inset-0 z-50" style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', background: 'rgba(0,0,0,0.3)' }}>
@@ -783,6 +798,11 @@ export default function TestScreen() {
                                 ? `d = ${currentFilteredDist.toFixed(2)}m`
                                 : "d = ---"}
                     </span>
+                    {piMode && (
+                        <span className="text-xs text-text-muted">
+                            {distanceSource} · {piDistanceValid ? "valid" : "invalid"}
+                        </span>
+                    )}
                     <span
                         className={`px-2 py-1 rounded-full text-xs font-medium ${stability === "UNLOCKED"
                             ? "bg-success/20 text-success"
@@ -814,8 +834,8 @@ export default function TestScreen() {
                     >
                         {/* Optotype rendered via SVG for pixel-perfect sizing */}
                         <svg
-                            width={eHeightPx}
-                            height={eHeightPx}
+                            width={renderedEHeightPx}
+                            height={renderedEHeightPx}
                             viewBox="0 0 5 5"
                             style={{
                                 transform: `rotate(${eRotation}deg)`,
@@ -959,6 +979,12 @@ export default function TestScreen() {
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {strokeTooSmall && (
+                    <div className="absolute bottom-4 rounded-lg bg-warning/20 px-3 py-2 text-xs text-warning">
+                        Pixel floor applied for this level on current display calibration.
+                    </div>
+                )}
             </div>
 
             {/* Bottom bar — layout adapts for mobile vs desktop */}
@@ -976,11 +1002,11 @@ export default function TestScreen() {
                     {/* Large touch D-pad */}
                     <div className="grid grid-cols-3 gap-2">
                         <div />
-                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("up")} disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>↑</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) && handleAnswer("up")} disabled={stability !== "UNLOCKED" || (piMode && piAttentionMonitoringActive && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>↑</button>
                         <div />
-                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("left")} disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>←</button>
-                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("down")} disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>↓</button>
-                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("right")} disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>→</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) && handleAnswer("left")} disabled={stability !== "UNLOCKED" || (piMode && piAttentionMonitoringActive && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>←</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) && handleAnswer("down")} disabled={stability !== "UNLOCKED" || (piMode && piAttentionMonitoringActive && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>↓</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) && handleAnswer("right")} disabled={stability !== "UNLOCKED" || (piMode && piAttentionMonitoringActive && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>→</button>
                     </div>
                     {/* Hidden camera elements — still used for face detection */}
                     <video ref={videoRef} className="hidden" playsInline muted />
@@ -1021,11 +1047,11 @@ export default function TestScreen() {
                     {/* Direction buttons (touch fallback) */}
                     <div className="grid grid-cols-3 gap-1">
                         <div />
-                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("up")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)}>↑</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) && handleAnswer("up")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && piAttentionMonitoringActive && !piAttentionOk)}>↑</button>
                         <div />
-                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("left")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)}>←</button>
-                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("down")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)}>↓</button>
-                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("right")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)}>→</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) && handleAnswer("left")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && piAttentionMonitoringActive && !piAttentionOk)}>←</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) && handleAnswer("down")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && piAttentionMonitoringActive && !piAttentionOk)}>↓</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || !piAttentionMonitoringActive || piAttentionOk) && handleAnswer("right")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && piAttentionMonitoringActive && !piAttentionOk)}>→</button>
                     </div>
                 </div>
             )}

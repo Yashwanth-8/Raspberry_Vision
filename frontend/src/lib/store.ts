@@ -39,7 +39,15 @@ interface AppState {
     distance: number; // meters, filtered
     rawDistance: number;
     distanceConfidence: number;
-    setDistance: (d: number, raw: number, confidence: number) => void;
+    distanceValid: boolean;
+    distanceSource: string;
+    setDistance: (
+        d: number,
+        raw: number,
+        confidence: number,
+        distanceValid?: boolean,
+        distanceSource?: string
+    ) => void;
 
     // Stability
     stability: StabilityState;
@@ -98,8 +106,16 @@ export const useAppStore = create<AppState>((set) => ({
     distance: 0,
     rawDistance: 0,
     distanceConfidence: 0,
-    setDistance: (distance, rawDistance, distanceConfidence) =>
-        set({ distance, rawDistance, distanceConfidence }),
+    distanceValid: false,
+    distanceSource: "unknown",
+    setDistance: (distance, rawDistance, distanceConfidence, distanceValid, distanceSource) =>
+        set({
+            distance,
+            rawDistance,
+            distanceConfidence,
+            distanceValid: distanceValid ?? (distance > 0 && distanceConfidence > 0),
+            distanceSource: distanceSource ?? "unknown",
+        }),
 
     stability: "LOCKED",
     setStability: (stability) => set({ stability }),

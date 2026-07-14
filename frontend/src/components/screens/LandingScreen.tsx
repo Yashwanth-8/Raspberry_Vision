@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import { useAppStore } from "@/lib/store";
 import { autoDetectScreenCalibration } from "@/lib/screen-calibration";
+import { loadDeviceConfig } from "@/lib/device-config";
 import type { CalibrationData } from "@/lib/types";
 
 const EyeIcon = () => (
@@ -87,13 +88,12 @@ const features = [
     {
         icon: "🔒",
         title: "Attention Monitor",
-        desc: "Camera pauses the test automatically if you look away or leave the frame",
+        desc: "Camera integrity checks pause on no-face/multiple-faces; richer eye-state checks are planned",
     },
 ];
 
 export default function LandingScreen() {
     const setScreen = useAppStore((s) => s.setScreen);
-    const calibration = useAppStore((s) => s.calibration);
     const optotypeType = useAppStore((s) => s.optotypeType);
     const eyeTested = useAppStore((s) => s.eyeTested);
     const setEyeTested = useAppStore((s) => s.setEyeTested);
@@ -102,22 +102,27 @@ export default function LandingScreen() {
     const [localAge, setLocalAge] = useState("");
     const [localGender, setLocalGender] = useState("");
 
-    const handleStart = () => {
+    const handleStart = async () => {
         // Detect mobile (touch-primary device)
         const mobile = window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 768;
         useAppStore.getState().setIsMobile(mobile);
 
-        // Auto-detect screen calibration (PPI/mmPerPx)
+        // Prefer provisioned kiosk calibration from device config.
+        const deviceConfig = await loadDeviceConfig();
         const detection = autoDetectScreenCalibration();
-        const cal: CalibrationData = {
-            mmPerPx: detection.mmPerPx,
-            deviceLabel: `${navigator.userAgent.slice(0, 40)} | ${detection.detectedPPI} PPI (${detection.method})`,
-            calibratedAt: Date.now(),
-        };
+        const cal: CalibrationData = deviceConfig
+            ? {
+                mmPerPx: deviceConfig.mmPerPx,
+                deviceLabel: deviceConfig.deviceLabel,
+                calibratedAt: Date.now(),
+            }
+            : {
+                mmPerPx: detection.mmPerPx,
+                deviceLabel: `${navigator.userAgent.slice(0, 40)} | ${detection.detectedPPI} PPI (${detection.method})`,
+                calibratedAt: Date.now(),
+            };
 
-        // Store calibration for future sessions
         useAppStore.getState().setCalibration(cal);
-        localStorage.setItem("nadi-calibration", JSON.stringify(cal));
 
         // Save optional patient demographics
         if (localAge || localGender) {
@@ -171,7 +176,7 @@ export default function LandingScreen() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.6, duration: 0.6 }}
                 >
-                    Clinical-grade visual acuity testing
+                    Vision screening prototype
                 </motion.p>
                 <motion.p
                     className="text-base text-text-muted mb-10"
@@ -179,7 +184,7 @@ export default function LandingScreen() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.7, duration: 0.6 }}
                 >
-                    Powered by computer vision. No extra hardware needed.
+                    Powered by Pi camera + ultrasonic distance sensing.
                 </motion.p>
 
                 {/* Optotype selector */}

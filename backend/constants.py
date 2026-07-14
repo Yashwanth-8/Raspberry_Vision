@@ -41,3 +41,7 @@ DETECT_HEIGHT = 240
 # HC-SR04 ultrasonic sensor GPIO pins (BCM numbering)
 ULTRASONIC_TRIGGER_PIN = 23
 ULTRASONIC_ECHO_PIN = 24
+
+# Approximate correction from ultrasonic sensor point to patient's eye position.
+# This is intentionally provisional until field characterization is completed.
+SENSOR_TO_EYE_OFFSET_M = 0.10
