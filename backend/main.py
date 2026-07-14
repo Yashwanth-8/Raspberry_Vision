@@ -5,8 +5,7 @@ Runs on the Raspberry Pi alongside the Next.js frontend (Chromium kiosk).
 
 Sensor responsibilities:
   HC-SR04 ultrasonic → distance measurement (accurate, zero camera CPU load)
-  Pi Camera (lores)  → attention monitoring via YuNet (is user looking?)
-  Pi Camera (main)   → 720p JPEG preview stream to the browser
+  Pi Camera (main)   → 720p JPEG preview + 320×240 resize for YuNet attention
 
 WebSocket message sent to all connected clients every frame:
 {
@@ -205,7 +204,7 @@ async def main() -> None:
     ultrasonic.start()
     logger.info("HC-SR04 ultrasonic sensor started")
 
-    # Start camera (dual-stream: 720p preview + 320×240 lores)
+    # Start camera (720p main stream; detection canvas created by resize in camera.py)
     camera = PiCamera()
     camera.start()
     logger.info(

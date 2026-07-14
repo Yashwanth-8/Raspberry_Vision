@@ -31,8 +31,7 @@ WS_HOST = "0.0.0.0"
 WS_PORT = 8765
 
 # Pi Camera config
-# main stream → 720p RGB888, sent as JPEG preview to the frontend
-# lores stream → 320×240 YUV420, fed into YuNet for attention detection
+# Capture at 720p; detection canvas (320×240) is produced by resizing in camera.py
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
 CAMERA_FRAMERATE = 30

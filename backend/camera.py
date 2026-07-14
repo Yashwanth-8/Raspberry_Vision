@@ -1,12 +1,9 @@
 """
 Pi Camera capture using picamera2 (Raspberry Pi OS Bookworm standard).
 
-Two simultaneous streams:
-  main  — 1280×720 RGB888  → JPEG preview sent to the frontend browser
-  lores — 320×240  YUV420  → resized/converted to BGR for YuNet detection
-
-The split keeps detection fast (320×240 ≈ 8 ms on Pi 4) while the browser
-still receives a quality 720p preview frame.
+Single main stream: 1280×720 RGB888 for the browser preview.
+The detection frame (320×240 BGR) is produced by resizing the main frame
+in the capture loop — avoids the YUV420 stride/padding crash on Pi 4.
 
 Falls back to a single OpenCV webcam stream (resized for both uses) when
 picamera2 is not available (laptop / dev environment).

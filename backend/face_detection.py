@@ -5,7 +5,7 @@ With the HC-SR04 ultrasonic sensor now handling all distance measurement,
 the camera's sole job is to verify the user is correctly engaged with the
 test and pause when they are not.
 
-Detection always runs on a fixed 320×240 canvas (the camera lores stream)
+Detection always runs on a fixed 320×240 canvas (the main camera frame resized)
 to avoid the setInputSize coordinate-scaling bug present in older OpenCV
 builds shipped with Raspberry Pi OS, and to keep inference fast (~8 ms on Pi 4).
 

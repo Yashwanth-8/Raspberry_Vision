@@ -4,8 +4,9 @@ HC-SR04 ultrasonic distance sensor via GPIO (gpiozero).
 Runs a background thread that polls the sensor at ~17 Hz and applies
 a 1-D Kalman filter to smooth out noise.
 
-Falls back to a static mock (0.6 m) when gpiozero is not available so
-the rest of the backend works unchanged on a development laptop.
+When gpiozero is not available OR the sensor is disconnected/out-of-range,
+distance_m and raw_distance_m return 0.0 and confidence = 0.0.
+The frontend correctly blocks the test when confidence < 0.5.
 """
 
 import threading
