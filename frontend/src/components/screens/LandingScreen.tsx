@@ -229,8 +229,8 @@ export default function LandingScreen() {
                                     key={e}
                                     onClick={() => setEyeTested(e)}
                                     className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer border ${eyeTested === e
-                                            ? "bg-primary/20 text-primary border-primary/40"
-                                            : "bg-surface border-white/10 text-text-secondary hover:border-white/20"
+                                        ? "bg-primary/20 text-primary border-primary/40"
+                                        : "bg-surface border-white/10 text-text-secondary hover:border-white/20"
                                         }`}
                                 >
                                     {e === "OD" ? "Right (OD)" : e === "OS" ? "Left (OS)" : "Both (OU)"}
@@ -253,8 +253,8 @@ export default function LandingScreen() {
                                     key={c}
                                     onClick={() => setCorrectionStatus(c)}
                                     className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer border ${correctionStatus === c
-                                            ? "bg-primary/20 text-primary border-primary/40"
-                                            : "bg-surface border-white/10 text-text-secondary hover:border-white/20"
+                                        ? "bg-primary/20 text-primary border-primary/40"
+                                        : "bg-surface border-white/10 text-text-secondary hover:border-white/20"
                                         }`}
                                 >
                                     {c === "unaided" ? "Unaided" : c === "glasses" ? "Glasses" : "Contacts"}

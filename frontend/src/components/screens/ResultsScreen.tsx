@@ -56,8 +56,8 @@ export default function ResultsScreen() {
     // sampling returns 0 — display "Not measured" rather than "Low".
     const ambientLabel =
         testResult.ambientLightEstimate === 0 ? "Not measured" :
-        testResult.ambientLightEstimate < 60 ? "Low" :
-            testResult.ambientLightEstimate < 160 ? "Adequate" : "Bright";
+            testResult.ambientLightEstimate < 60 ? "Low" :
+                testResult.ambientLightEstimate < 160 ? "Adequate" : "Bright";
 
     // Correction status label
     const correctionLabel =
