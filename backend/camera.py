@@ -87,21 +87,31 @@ class PiCamera:
 
     def _capture_loop_picamera2(self) -> None:
         cv2 = self._cv2
+        import logging
+        _log = logging.getLogger(__name__)
         while self._running:
-            request = self._cam.capture_request()
             try:
-                main_arr = request.make_array("main")   # (H, W, 4) in BGRX order
-            finally:
-                request.release()
+                request = self._cam.capture_request()
+                try:
+                    main_arr = request.make_array("main")   # (H, W, 4) in BGRX order
+                finally:
+                    request.release()
 
-            # Drop the padding byte (X) — remaining channels are B, G, R → correct BGR
-            main_bgr = main_arr[:, :, :3].copy()
-            # Resize to detection canvas
-            detect_bgr = cv2.resize(main_bgr, (DETECT_WIDTH, DETECT_HEIGHT))
+                # Drop the padding byte (X) — remaining channels are B, G, R → correct BGR
+                main_bgr = main_arr[:, :, :3].copy()
+                # Resize to detection canvas
+                detect_bgr = cv2.resize(main_bgr, (DETECT_WIDTH, DETECT_HEIGHT))
 
-            with self._lock:
-                self._frame = main_bgr
-                self._detect_frame = detect_bgr
+                with self._lock:
+                    self._frame = main_bgr
+                    self._detect_frame = detect_bgr
+
+            except Exception as exc:  # noqa: BLE001
+                # Transient picamera2 / bus error — log once and retry next frame
+                # rather than letting the thread die silently.
+                _log.warning("Camera capture error (will retry): %s", exc)
+                import time as _time
+                _time.sleep(0.1)
 
     # ------------------------------------------------------------------
     def _start_opencv(self) -> None:

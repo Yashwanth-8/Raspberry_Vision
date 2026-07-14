@@ -137,7 +137,12 @@ async def camera_loop(
             continue
 
         # ---- Attention detection (CPU-bound → executor) ----
-        detection = await loop.run_in_executor(None, detector.process, detect_frame)
+        if detector is not None:
+            detection = await loop.run_in_executor(None, detector.process, detect_frame)
+        else:
+            # YuNet failed to load at startup — run without face detection
+            detection = {"face_detected": False, "face_count": 0,
+                         "attention_ok": True, "attention_reason": "detector_unavailable"}
 
         # Defensive guard: if face_detection.py returns an unexpected format
         # (e.g. old version without attention_ok), log a warning and continue
@@ -236,17 +241,25 @@ async def main() -> None:
 
         # Load YuNet in executor so the event loop stays free during model init
         logger.info("Loading YuNet face detector…")
-        detector = await loop.run_in_executor(
-            None,
-            lambda: FaceDetector(
-                max_num_faces=2,
-                score_threshold=0.6,
-                refine_landmarks=True,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5,
-            ),
-        )
-        logger.info("YuNet loaded — attention monitoring active")
+        try:
+            detector = await loop.run_in_executor(
+                None,
+                lambda: FaceDetector(
+                    max_num_faces=2,
+                    score_threshold=0.6,
+                    refine_landmarks=True,
+                    min_detection_confidence=0.5,
+                    min_tracking_confidence=0.5,
+                ),
+            )
+            logger.info("YuNet loaded — attention monitoring active")
+        except Exception as exc:
+            logger.error(
+                "YuNet detector failed to load: %s\n"
+                "  Attention monitoring disabled — test will proceed without face detection.",
+                exc,
+            )
+            detector = None  # camera_loop handles None detector gracefully
 
         camera_task = asyncio.create_task(
             camera_loop(camera, detector, ultrasonic)

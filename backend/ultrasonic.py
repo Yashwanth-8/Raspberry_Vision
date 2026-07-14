@@ -110,9 +110,9 @@ class UltrasonicSensor:
             time.sleep(0.06)   # ~17 Hz matches HC-SR04 max update rate
 
     # Sensor is considered active when GPIO is enabled AND a valid reading
-    # was received within the last 2 seconds. If the sensor is unplugged or
-    # out of range, this returns False and distance properties return 0.0.
-    _SENSOR_TIMEOUT_S = 2.0
+    # was received within the last 3 seconds. 3s is slightly more forgiving
+    # than 2s for breadboard / prototype rigs with occasional contact bounces.
+    _SENSOR_TIMEOUT_S = 3.0
 
     @property
     def is_sensor_active(self) -> bool:
