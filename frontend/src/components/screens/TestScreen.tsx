@@ -688,8 +688,8 @@ export default function TestScreen() {
                             <h3 className="text-xl font-bold text-text-primary mb-2">Look at the Screen</h3>
                             <p className="text-lg text-primary font-mono font-bold mb-2">
                                 {piAttentionReason === "no_face" ? "No face detected" :
-                                 piAttentionReason === "not_centred" ? "Please centre yourself" :
-                                 "Please face forward"}
+                                    piAttentionReason === "not_centred" ? "Please centre yourself" :
+                                        "Please face forward"}
                             </p>
                             <p className="text-xs text-text-secondary">Test paused until you are correctly positioned.</p>
                         </div>
