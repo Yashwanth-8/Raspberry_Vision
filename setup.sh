@@ -118,6 +118,12 @@ export NODE_OPTIONS="--max-old-space-size=1024"
 npm run build
 
 echo "      Frontend build complete."
+
+# Install local-ssl-proxy globally — used by start.sh to expose HTTPS on port 3443
+# so phones on the local network can access the app (camera APIs require HTTPS).
+echo "      Installing local-ssl-proxy (HTTPS proxy for LAN access)..."
+npm install -g local-ssl-proxy
+echo "      local-ssl-proxy: $(local-ssl-proxy --version 2>/dev/null || echo 'installed')"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -134,6 +140,9 @@ echo ""
 echo " To run the app:"
 echo "   cd $SCRIPT_DIR"
 echo "   ./start.sh"
+echo ""
+echo " Kiosk (Pi screen):   http://localhost:3000"
+echo " Phone / LAN access:  https://<Pi-IP>:3443  (accept the self-signed cert warning)"
 echo ""
 echo " To test backend alone:"
 echo "   cd $BACKEND_DIR"
