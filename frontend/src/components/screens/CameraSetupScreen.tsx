@@ -48,11 +48,15 @@ export default function CameraSetupScreen() {
 
     // Read distance from store (works for both Pi and browser paths)
     const storeDistance = useAppStore((s) => s.distance);
+    const storeRawDistance = useAppStore((s) => s.rawDistance);
     const storeConfidence = useAppStore((s) => s.distanceConfidence);
 
     // Effective values — Pi overrides browser
+    // In Pi mode, show rawDistance for the setup preview so the number responds
+    // instantly as the person adjusts their position. The Kalman-filtered value
+    // is still used in TestScreen for the stability FSM.
     const effectiveFaceDetected = piMode ? piFaceDetected : faceDetected;
-    const effectiveDistance = piMode ? storeDistance : currentDistance;
+    const effectiveDistance = piMode ? (storeRawDistance > 0 ? storeRawDistance : storeDistance) : currentDistance;
     const effectiveConfidence = piMode ? storeConfidence : confidence;
 
     // When Pi mode activates, mark camera ready immediately and send IPD

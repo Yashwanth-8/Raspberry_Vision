@@ -47,10 +47,12 @@ class UltrasonicSensor:
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
-        # Tighter noise model for a static sensor measuring a seated person
+        # HC-SR04 has ~3mm noise — measurement_noise reflects that.
+        # process_noise is set high enough for responsive display during setup
+        # (converges in ~3 steps / 200ms) while still smoothing sensor jitter.
         self._kalman = KalmanFilter1D(
             initial_estimate=0.6,
-            process_noise=0.002,
+            process_noise=0.02,
             measurement_noise=0.015,
         )
 
