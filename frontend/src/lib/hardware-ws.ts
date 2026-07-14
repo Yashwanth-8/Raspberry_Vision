@@ -121,14 +121,14 @@ class HardwareWSManager {
                 const msg = JSON.parse(ev.data as string);
                 if (msg.type !== "frame") return;
 
-                // Push distance into Zustand store directly
-                if (msg.distance > 0) {
-                    useAppStore.getState().setDistance(
-                        msg.distance,
-                        msg.raw_distance ?? msg.distance,
-                        msg.confidence ?? 0,
-                    );
-                }
+                // Always push distance + confidence to the store so the frontend
+                // always reflects the true sensor state. When confidence=0 the
+                // store gets distance=0, which stops the stability FSM in TestScreen.
+                useAppStore.getState().setDistance(
+                    msg.distance ?? 0,
+                    msg.raw_distance ?? msg.distance ?? 0,
+                    msg.confidence ?? 0,
+                );
 
                 // Update local state for consumers
                 this.state = {

@@ -186,11 +186,21 @@ export default function TestScreen() {
 
     // Sync Pi distance into distRef (replaces browser MediaPipe path when piMode)
     const piStoreDistance = useAppStore((s) => s.distance);
+    const piDistanceConfidence = useAppStore((s) => s.distanceConfidence);
     useEffect(() => {
-        if (!piMode || piStoreDistance <= 0) return;
-        distRef.current = piStoreDistance;
-        setCurrentFilteredDist(piStoreDistance);
-    }, [piMode, piStoreDistance]);
+        if (!piMode) return;
+        // Only accept a reading when the ultrasonic sensor is genuinely active
+        // (confidence=1.0). When sensor is disconnected, confidence=0 and
+        // distance=0 — reset distRef so the stability FSM stops and the test
+        // cannot proceed with stale or fabricated distance data.
+        if (piStoreDistance > 0 && piDistanceConfidence >= 0.5) {
+            distRef.current = piStoreDistance;
+            setCurrentFilteredDist(piStoreDistance);
+        } else {
+            distRef.current = 0;
+            setCurrentFilteredDist(0);
+        }
+    }, [piMode, piStoreDistance, piDistanceConfidence]);
 
     // Keep lastFaceSeenRef current in Pi mode.
     // Use attentionOk rather than faceDetected: only counts as "seen" when the

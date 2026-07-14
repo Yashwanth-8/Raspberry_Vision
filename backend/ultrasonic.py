@@ -41,15 +41,13 @@ class UltrasonicSensor:
         echo_pin: int = ULTRASONIC_ECHO_PIN,
         trigger_pin: int = ULTRASONIC_TRIGGER_PIN,
     ) -> None:
-        self._distance_m: float = 0.6        # sensible default until first read
-        self._raw_m: float = 0.6
+        self._distance_m: float = 0.0
+        self._raw_m: float = 0.0
+        self._last_valid_time: float = 0.0   # monotonic; 0 = no valid reading yet
         self._lock = threading.Lock()
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
-        # HC-SR04 has ~3mm noise — measurement_noise reflects that.
-        # process_noise is set high enough for responsive display during setup
-        # (converges in ~3 steps / 200ms) while still smoothing sensor jitter.
         self._kalman = KalmanFilter1D(
             initial_estimate=0.6,
             process_noise=0.02,
@@ -75,7 +73,7 @@ class UltrasonicSensor:
                 self._use_gpio = False
         else:
             logger.warning(
-                "gpiozero not available — UltrasonicSensor running in mock mode (0.6 m)"
+                "gpiozero not available — UltrasonicSensor in mock mode (distance = 0)"
             )
             self._sensor = None
             self._use_gpio = False
@@ -91,24 +89,42 @@ class UltrasonicSensor:
     def _loop(self) -> None:
         while self._running:
             if self._use_gpio and self._sensor is not None:
-                raw = self._sensor.distance  # metres (None if out-of-range)
+                raw = self._sensor.distance  # metres, or None if no echo received
                 if raw is not None and _MIN_M < raw < _MAX_M:
                     filtered = self._kalman.update(raw)
                     with self._lock:
                         self._raw_m = raw
                         self._distance_m = filtered
+                        self._last_valid_time = time.monotonic()
             time.sleep(0.06)   # ~17 Hz matches HC-SR04 max update rate
+
+    # Sensor is considered active when GPIO is enabled AND a valid reading
+    # was received within the last 2 seconds. If the sensor is unplugged or
+    # out of range, this returns False and distance properties return 0.0.
+    _SENSOR_TIMEOUT_S = 2.0
+
+    @property
+    def is_sensor_active(self) -> bool:
+        if not self._use_gpio:
+            return False
+        with self._lock:
+            return (self._last_valid_time > 0 and
+                    (time.monotonic() - self._last_valid_time) < self._SENSOR_TIMEOUT_S)
 
     # ------------------------------------------------------------------
     @property
     def distance_m(self) -> float:
-        """Kalman-filtered distance in metres."""
+        """Kalman-filtered distance in metres. Returns 0.0 when sensor inactive."""
+        if not self.is_sensor_active:
+            return 0.0
         with self._lock:
             return self._distance_m
 
     @property
     def raw_distance_m(self) -> float:
-        """Latest unfiltered reading in metres."""
+        """Latest unfiltered reading in metres. Returns 0.0 when sensor inactive."""
+        if not self.is_sensor_active:
+            return 0.0
         with self._lock:
             return self._raw_m
 

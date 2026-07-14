@@ -44,7 +44,6 @@ from websockets.server import WebSocketServerProtocol
 from camera import PiCamera
 from face_detection import FaceDetector
 from ultrasonic import UltrasonicSensor
-from kalman import KalmanFilter1D
 from constants import WS_HOST, WS_PORT
 
 logging.basicConfig(
@@ -143,7 +142,10 @@ async def camera_loop(
         # ---- Distance from HC-SR04 (non-blocking property read) ----
         distance_m     = ultrasonic.distance_m
         raw_distance_m = ultrasonic.raw_distance_m
-        confidence     = 1.0 if distance_m > 0 else 0.0
+        # confidence is 1.0 ONLY when sensor is wired and returning valid readings.
+        # When sensor is unplugged/out-of-range, is_sensor_active=False and
+        # distance_m=0.0, so confidence=0.0 — frontend correctly blocks the test.
+        confidence     = 1.0 if ultrasonic.is_sensor_active else 0.0
 
         # ---- Build WebSocket JSON message ----
         message = json.dumps({
@@ -207,7 +209,7 @@ async def main() -> None:
     camera = PiCamera()
     camera.start()
     logger.info(
-        "Pi Camera started — main %dx%d, lores 320×240",
+        "Pi Camera started — %dx%d, detection canvas 320×240",
         camera.width, camera.height,
     )
 
