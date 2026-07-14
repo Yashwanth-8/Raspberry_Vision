@@ -84,6 +84,11 @@ export default function TestScreen() {
     // distRef is written directly by the face-mesh callback so the stability
     // interval (which has empty deps) always reads the freshest value.
     const distRef = useRef(0);
+    // Ref mirror of piAttentionOk so the keyboard handler closure always reads
+    // the latest value without needing to be re-created on every attention change.
+    const piAttentionOkRef = useRef(true);
+    useEffect(() => { piAttentionOkRef.current = piAttentionOk; }, [piAttentionOk]);
+
     const [currentFilteredDist, setCurrentFilteredDist] = useState(0);
     const [focalLength, setFocalLength] = useState(0);
     const [cameraActive, setCameraActive] = useState(false);
@@ -420,6 +425,8 @@ export default function TestScreen() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (stability !== "UNLOCKED") return;
+            // In Pi mode: block input when attention monitor says user isn't engaged
+            if (piMode && !piAttentionOkRef.current) return;
 
             let answered: EDirection | null = null;
             switch (e.key) {
@@ -442,6 +449,8 @@ export default function TestScreen() {
     // Handle patient's answer
     const handleAnswer = useCallback(
         (answered: EDirection) => {
+            // Block answers when Pi attention monitor says user isn't engaged
+            if (piMode && !piAttentionOkRef.current) return;
             const correct = answered === currentDirection;
             const level = ACUITY_LEVELS[currentLevelIndex];
 
@@ -941,11 +950,11 @@ export default function TestScreen() {
                     {/* Large touch D-pad */}
                     <div className="grid grid-cols-3 gap-2">
                         <div />
-                        <button onClick={() => stability === "UNLOCKED" && handleAnswer("up")} disabled={stability !== "UNLOCKED"} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>↑</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("up")} disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>↑</button>
                         <div />
-                        <button onClick={() => stability === "UNLOCKED" && handleAnswer("left")} disabled={stability !== "UNLOCKED"} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>←</button>
-                        <button onClick={() => stability === "UNLOCKED" && handleAnswer("down")} disabled={stability !== "UNLOCKED"} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>↓</button>
-                        <button onClick={() => stability === "UNLOCKED" && handleAnswer("right")} disabled={stability !== "UNLOCKED"} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>→</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("left")} disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>←</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("down")} disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>↓</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("right")} disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl transition-all ${stability === "UNLOCKED" && (!piMode || piAttentionOk) ? "bg-surface-light active:scale-90 active:bg-primary/20 cursor-pointer" : "bg-surface opacity-30 cursor-not-allowed"}`}>→</button>
                     </div>
                     {/* Hidden camera elements — still used for face detection */}
                     <video ref={videoRef} className="hidden" playsInline muted />
@@ -978,11 +987,11 @@ export default function TestScreen() {
                     {/* Direction buttons (touch fallback) */}
                     <div className="grid grid-cols-3 gap-1">
                         <div />
-                        <button onClick={() => stability === "UNLOCKED" && handleAnswer("up")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED"}>↑</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("up")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)}>↑</button>
                         <div />
-                        <button onClick={() => stability === "UNLOCKED" && handleAnswer("left")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED"}>←</button>
-                        <button onClick={() => stability === "UNLOCKED" && handleAnswer("down")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED"}>↓</button>
-                        <button onClick={() => stability === "UNLOCKED" && handleAnswer("right")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED"}>→</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("left")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)}>←</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("down")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)}>↓</button>
+                        <button onClick={() => stability === "UNLOCKED" && (!piMode || piAttentionOk) && handleAnswer("right")} className="w-10 h-10 rounded-lg bg-surface-light hover:bg-primary/20 flex items-center justify-center text-lg transition-colors cursor-pointer" disabled={stability !== "UNLOCKED" || (piMode && !piAttentionOk)}>→</button>
                     </div>
                 </div>
             )}
