@@ -10,3 +10,6 @@ frontend/.next/
 
 # YuNet model file — downloaded automatically on first run
 backend/models/
+
+#Agentic-Skills
+.github/

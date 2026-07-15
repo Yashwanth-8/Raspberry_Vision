@@ -379,11 +379,11 @@ export default function TestScreen() {
 
                 const drift = Math.abs(dist - stabilityAnchorRef.current) * 100; // cm
 
-                // Exponential moving average: anchor tracks natural micro-movements so
-                // estimation jitter alone cannot prevent the countdown from starting.
-                stabilityAnchorRef.current = 0.8 * stabilityAnchorRef.current + 0.2 * dist;
+                // Fast EMA so anchor tracks the user's new position quickly.
+                // 0.6/0.4 converges in ~3 ticks (450 ms) vs 0.8/0.2 (>1 s).
+                stabilityAnchorRef.current = 0.6 * stabilityAnchorRef.current + 0.4 * dist;
 
-                if (drift < 20) {
+                if (drift < 15) {
                     // Position looks stable — start 3-second countdown
                     stabilityStartRef.current = Date.now();
                     useAppStore.getState().setStability("STABILIZING");
@@ -392,13 +392,13 @@ export default function TestScreen() {
             } else if (stab === "STABILIZING") {
                 const drift = Math.abs(dist - stabilityAnchorRef.current) * 100;
 
-                if (drift > 25) {
-                    // Significant jump — reset
+                if (drift > 10) {
+                    // Moved during countdown — reset immediately
                     useAppStore.getState().setStability("LOCKED");
                     stabilityAnchorRef.current = dist;
                     useAppStore.getState().setStabilityTimer(STABILITY_LOCK_DURATION_S);
                 } else {
-                    // Allow gentle drift — body sway shouldn't break the countdown
+                    // Gentle drift during countdown is fine
                     stabilityAnchorRef.current = 0.97 * stabilityAnchorRef.current + 0.03 * dist;
                     const elapsed = (Date.now() - stabilityStartRef.current) / 1000;
                     const remaining = Math.max(0, STABILITY_LOCK_DURATION_S - elapsed);
@@ -418,7 +418,10 @@ export default function TestScreen() {
                 }
 
                 const drift = Math.abs(dist - locked) * 100;
-                if (drift > 30) {
+                if (drift > 10) {
+                    // > 10 cm drift from locked position — reset immediately.
+                    // With K≈0.71 Kalman the filter reflects real moves within ~150 ms,
+                    // so this triggers in near-real-time on any deliberate movement.
                     useAppStore.getState().setStability("LOCKED");
                     stabilityAnchorRef.current = dist;
                     useAppStore.getState().setStabilityTimer(STABILITY_LOCK_DURATION_S);

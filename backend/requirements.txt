@@ -1,8 +1,0 @@
-websockets>=12.0,<14.0
-gpiozero>=2.0
-# RPi.GPIO is the gpiozero backend on Pi OS — installed via apt, not pip:
-#   sudo apt-get install -y python3-rpi.gpio
-# opencv, numpy, picamera2 are installed via apt and accessed through
-# --system-site-packages venv — do NOT pip install them.
-# If testing on a laptop, the gpiozero import is caught and the ultrasonic
-# sensor runs in mock mode (returns 0.6 m). Camera falls back to /dev/video0.
