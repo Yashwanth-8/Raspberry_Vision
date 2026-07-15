@@ -51,9 +51,8 @@ export default function CameraSetupScreen() {
     const storeConfidence = useAppStore((s) => s.distanceConfidence);
 
     // Effective values — Pi overrides browser
-    // Use Kalman-filtered storeDistance (not rawDistance) — the median+Kalman
-    // pipeline in ultrasonic.py already gives responsive readings (~200ms) while
-    // rejecting outlier spikes from wall reflections etc.
+    // In Pi mode use the EMA-smoothed storeDistance (median+EMA pipeline in
+    // ultrasonic.py gives responsive readings ~180ms while rejecting spikes).
     const effectiveFaceDetected = piMode ? piFaceDetected : faceDetected;
     const effectiveDistance = piMode ? storeDistance : currentDistance;
     const effectiveConfidence = piMode ? storeConfidence : confidence;

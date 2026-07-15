@@ -135,7 +135,7 @@ class UltrasonicSensor:
     # ------------------------------------------------------------------
     @property
     def distance_m(self) -> float:
-        """Kalman-filtered distance in metres. Returns 0.0 when sensor inactive."""
+        """EMA-smoothed distance in metres (after median spike rejection). Returns 0.0 when sensor inactive."""
         if not self.is_sensor_active:
             return 0.0
         with self._lock:

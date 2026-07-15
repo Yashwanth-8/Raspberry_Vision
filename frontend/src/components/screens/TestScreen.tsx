@@ -419,8 +419,8 @@ export default function TestScreen() {
 
                 const drift = Math.abs(dist - locked) * 100;
                 if (drift > 10) {
-                    // > 10 cm drift from locked position — reset immediately.
-                    // With K≈0.71 Kalman the filter reflects real moves within ~150 ms,
+                    // > 10 cm drift — reset immediately.
+                    // Median+EMA pipeline reflects real moves within ~180 ms,
                     // so this triggers in near-real-time on any deliberate movement.
                     useAppStore.getState().setStability("LOCKED");
                     stabilityAnchorRef.current = dist;
