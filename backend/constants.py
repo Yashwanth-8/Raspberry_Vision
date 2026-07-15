@@ -41,3 +41,16 @@ DETECT_HEIGHT = 240
 # HC-SR04 ultrasonic sensor GPIO pins (BCM numbering)
 ULTRASONIC_TRIGGER_PIN = 23
 ULTRASONIC_ECHO_PIN = 24
+
+# ---------------------------------------------------------------------------
+# Attention-monitoring thresholds (camera-based, clinical validation)
+# ---------------------------------------------------------------------------
+# Head pose (solvePnP) — how far the head can turn before flagging
+HEAD_YAW_THRESHOLD_DEG   = 30.0   # horizontal turn left/right
+HEAD_PITCH_THRESHOLD_DEG = 25.0   # tilt up/down
+
+# Eye closure — both eyes closed longer than this → attention fail
+EYES_CLOSED_THRESHOLD_S  = 1.5    # seconds
+
+# Gaze/iris — normalised iris offset from eye centre (−1=far left, +1=far right)
+GAZE_OFFSET_THRESHOLD    = 0.40   # ~40 % off-centre → looking away

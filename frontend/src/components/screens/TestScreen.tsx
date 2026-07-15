@@ -716,16 +716,28 @@ export default function TestScreen() {
 
     return (
         <div className="relative min-h-screen flex flex-col" tabIndex={0}>
-            {/* Attention overlay — face genuinely absent (Pi mode only).
-                Only triggers for no_face. camera_starting / detection_error
-                never block the test. multiple_faces has its own overlay below. */}
-            {piMode && piAttentionReason === "no_face" && (
+            {/* Attention overlay — single-face attention failures (Pi mode only).
+                Covers no_face / head_turned / eyes_closed / gaze_away.
+                multiple_faces has its own dedicated overlay below. */}
+            {piMode && !piAttentionOk && piAttentionReason !== "multiple_faces" && (
                 <div className="absolute inset-0 z-50" style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', background: 'rgba(0,0,0,0.4)' }}>
                     <div className="flex flex-col items-center justify-center h-full">
                         <div className="glass rounded-3xl px-10 py-10 text-center max-w-xs w-full">
-                            <h3 className="text-xl font-bold text-text-primary mb-2">No Face Detected</h3>
+                            <h3 className="text-xl font-bold text-text-primary mb-2">
+                                {piAttentionReason === "no_face"     ? "No Face Detected"           :
+                                 piAttentionReason === "head_turned" ? "Please Face the Screen"     :
+                                 piAttentionReason === "eyes_closed" ? "Please Keep Your Eyes Open" :
+                                 piAttentionReason === "gaze_away"   ? "Please Look at the Screen"  :
+                                                                       "Attention Required"}
+                            </h3>
                             <p className="text-lg text-primary font-mono font-bold mb-2">Test Paused</p>
-                            <p className="text-xs text-text-secondary">Please look at the screen to continue.</p>
+                            <p className="text-xs text-text-secondary">
+                                {piAttentionReason === "no_face"     ? "No face detected in frame."             :
+                                 piAttentionReason === "head_turned" ? "Head turned too far — face the screen." :
+                                 piAttentionReason === "eyes_closed" ? "Eyes closed — please open your eyes."   :
+                                 piAttentionReason === "gaze_away"   ? "Eyes looking sideways — look at the E." :
+                                                                       "Please position yourself correctly."}
+                            </p>
                         </div>
                     </div>
                 </div>

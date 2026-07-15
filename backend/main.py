@@ -107,26 +107,25 @@ async def camera_loop(
     while True:
         t0 = time.monotonic()
 
-        # ---- Grab detection frame (320×240 from camera) ----
-        detect_frame = await loop.run_in_executor(None, camera.grab_detect_frame)
+        # ---- Grab both frames atomically (one lock acquisition) ----
+        main_frame, detect_frame = await loop.run_in_executor(
+            None, camera.grab_both_frames
+        )
 
         if detect_frame is None:
             # Camera still warming up — send distance and let the test proceed.
-            # Setting attention_ok=True here prevents the startup overlay from
-            # blocking the user before the camera has produced its first frame.
             distance_m     = ultrasonic.distance_m
             raw_distance_m = ultrasonic.raw_distance_m
             no_cam_msg = json.dumps({
                 "type": "frame",
-                "face_detected": False,
-                "face_count": 0,
-                "attention_ok": True,
-                "attention_reason": "camera_starting",
+                "face_detected": False, "face_count": 0,
+                "attention_ok": True, "attention_reason": "camera_starting",
+                "head_yaw_deg": 0.0, "head_pitch_deg": 0.0,
+                "eyes_closed": False, "gaze_offset": 0.0,
                 "distance": round(distance_m, 4),
                 "raw_distance": round(raw_distance_m, 4),
                 "confidence": round(1.0 if ultrasonic.is_sensor_active else 0.0, 4),
-                "iris_px": None,
-                "focal_length_px": None,
+                "iris_px": None, "focal_length_px": None,
             })
             if connected_clients:
                 await asyncio.gather(
@@ -136,28 +135,32 @@ async def camera_loop(
             await asyncio.sleep(0.05)
             continue
 
-        # ---- Attention detection (CPU-bound → executor) ----
+        # ---- Attention detection: pass BOTH frames so eye analysis runs ----
         if detector is not None:
-            detection = await loop.run_in_executor(None, detector.process, detect_frame)
+            detection = await loop.run_in_executor(
+                None, detector.process, detect_frame, main_frame
+            )
         else:
-            # YuNet failed to load at startup — run without face detection
-            detection = {"face_detected": False, "face_count": 0,
-                         "attention_ok": True, "attention_reason": "detector_unavailable"}
+            detection = {
+                "face_detected": False, "face_count": 0,
+                "attention_ok": True, "attention_reason": "detector_unavailable",
+                "head_yaw_deg": 0.0, "head_pitch_deg": 0.0,
+                "eyes_closed": False, "gaze_offset": 0.0,
+            }
 
         # Defensive guard: if face_detection.py returns an unexpected format
         # (e.g. old version without attention_ok), log a warning and continue
         # safely instead of crashing the whole server.
         if not isinstance(detection, dict) or "attention_ok" not in detection:
             logger.warning(
-                "detector.process() returned unexpected format: %s — "
-                "check face_detection.py version. Treating as face present.",
+                "detector.process() returned unexpected format: %s — treating as face present.",
                 type(detection).__name__,
             )
             detection = {
-                "face_detected": detection.get("face_detected", False) if isinstance(detection, dict) else False,
-                "face_count":    detection.get("face_count", 0)        if isinstance(detection, dict) else 0,
-                "attention_ok":     True,               # benefit of the doubt on detection errors
-                "attention_reason": "detection_error",
+                "face_detected": False, "face_count": 0,
+                "attention_ok": True, "attention_reason": "detection_error",
+                "head_yaw_deg": 0.0, "head_pitch_deg": 0.0,
+                "eyes_closed": False, "gaze_offset": 0.0,
             }
 
         # ---- Distance from HC-SR04 (non-blocking property read) ----
@@ -175,6 +178,10 @@ async def camera_loop(
             "face_count":       detection["face_count"],
             "attention_ok":     detection["attention_ok"],
             "attention_reason": detection["attention_reason"],
+            "head_yaw_deg":     detection.get("head_yaw_deg",   0.0),
+            "head_pitch_deg":   detection.get("head_pitch_deg", 0.0),
+            "eyes_closed":      detection.get("eyes_closed",    False),
+            "gaze_offset":      detection.get("gaze_offset",    0.0),
             "distance":         round(distance_m, 4),
             "raw_distance":     round(raw_distance_m, 4),
             "confidence":       round(confidence, 4),
@@ -188,23 +195,18 @@ async def camera_loop(
                 return_exceptions=True,
             )
 
-        # ---- JPEG preview every PREVIEW_SKIP frames ----
+        # ---- JPEG preview every PREVIEW_SKIP frames (reuse main_frame already in hand) ----
         _preview_counter += 1
-        if _preview_counter >= PREVIEW_SKIP and connected_clients:
+        if _preview_counter >= PREVIEW_SKIP and connected_clients and main_frame is not None:
             _preview_counter = 0
-            preview_frame = await loop.run_in_executor(None, camera.grab_frame)
-            if preview_frame is not None:
-                # Downscale 720p → 640×360 for the WebSocket preview (saves bandwidth)
-                ph, pw = preview_frame.shape[0] // 2, preview_frame.shape[1] // 2
-                small = cv2.resize(preview_frame, (pw, ph))
-                _, jpeg_buf = cv2.imencode(
-                    ".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 65]
-                )
-                jpeg_bytes = jpeg_buf.tobytes()
-                await asyncio.gather(
-                    *[client.send(jpeg_bytes) for client in connected_clients.copy()],
-                    return_exceptions=True,
-                )
+            ph, pw = main_frame.shape[0] // 2, main_frame.shape[1] // 2
+            small = cv2.resize(main_frame, (pw, ph))
+            _, jpeg_buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 65])
+            jpeg_bytes = jpeg_buf.tobytes()
+            await asyncio.gather(
+                *[client.send(jpeg_bytes) for client in connected_clients.copy()],
+                return_exceptions=True,
+            )
 
         # ---- Throttle to target frame rate ----
         elapsed    = time.monotonic() - t0

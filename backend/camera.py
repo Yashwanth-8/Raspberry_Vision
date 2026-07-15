@@ -147,6 +147,18 @@ class PiCamera:
         with self._lock:
             return self._detect_frame.copy() if self._detect_frame is not None else None
 
+    def grab_both_frames(self):
+        """Return (main_bgr, detect_bgr) atomically under one lock acquisition.
+
+        Calling grab_frame() and grab_detect_frame() separately acquires the
+        lock twice; this method does it once so both frames always come from
+        the same camera capture request.
+        """
+        with self._lock:
+            main   = self._frame.copy()        if self._frame        is not None else None
+            detect = self._detect_frame.copy() if self._detect_frame is not None else None
+            return main, detect
+
     # ------------------------------------------------------------------
     def stop(self) -> None:
         self._running = False
