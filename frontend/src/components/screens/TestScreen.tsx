@@ -88,11 +88,6 @@ export default function TestScreen() {
     // the latest value without needing to be re-created on every attention change.
     const piAttentionOkRef = useRef(true);
     useEffect(() => { piAttentionOkRef.current = piAttentionOk; }, [piAttentionOk]);
-    // Separate ref tracking whether a face is physically in frame.
-    // Used for face_lost cheat detection so that head_turned/eyes_closed/gaze_away
-    // (face present but attention failing) do NOT trigger a false face_lost flag.
-    const piFaceDetectedRef = useRef(false);
-    useEffect(() => { piFaceDetectedRef.current = piFaceDetected; }, [piFaceDetected]);
 
     const [currentFilteredDist, setCurrentFilteredDist] = useState(0);
     const [focalLength, setFocalLength] = useState(0);
@@ -208,12 +203,12 @@ export default function TestScreen() {
     }, [piMode, piStoreDistance, piDistanceConfidence]);
 
     // Keep lastFaceSeenRef current in Pi mode.
-    // Use piFaceDetected (physical face presence) NOT piAttentionOk so that
-    // head_turned / eyes_closed / gaze_away don't generate false face_lost flags.
+    // Use attentionOk rather than faceDetected: only counts as "seen" when the
+    // user is correctly positioned and looking at the screen.
     useEffect(() => {
-        if (!piMode || !piFaceDetected) return;
+        if (!piMode || !piAttentionOk) return;
         lastFaceSeenRef.current = Date.now();
-    }, [piMode, piFaceDetected]);
+    }, [piMode, piAttentionOk]);
 
     // Start camera + face mesh
     useEffect(() => {
@@ -414,10 +409,11 @@ export default function TestScreen() {
                     }
                 }
             } else if (stab === "UNLOCKED") {
-                // Refresh lastFaceSeenRef whenever face is physically present
-                // (regardless of attention_ok — head_turned/eyes_closed/gaze_away
-                // all have the face in frame; only no_face should stop the refresh).
-                if (piMode ? piFaceDetectedRef.current : true) {
+                // Continuously refresh lastFaceSeenRef while face is present.
+                // Without this, the ref only updates on piAttentionOk TRANSITIONS
+                // (false→true), so after 2s of continuous face detection the
+                // face_lost flag fires even with a face right there.
+                if (piAttentionOkRef.current) {
                     lastFaceSeenRef.current = Date.now();
                 }
 
@@ -720,28 +716,16 @@ export default function TestScreen() {
 
     return (
         <div className="relative min-h-screen flex flex-col" tabIndex={0}>
-            {/* Attention overlay — attention failures with contextual messages.
-                no_face / head_turned / eyes_closed / gaze_away each get a
-                specific instruction. multiple_faces has its own overlay below. */}
-            {piMode && !piAttentionOk && piAttentionReason !== "multiple_faces" && (
+            {/* Attention overlay — face genuinely absent (Pi mode only).
+                Only triggers for no_face. camera_starting / detection_error
+                never block the test. multiple_faces has its own overlay below. */}
+            {piMode && piAttentionReason === "no_face" && (
                 <div className="absolute inset-0 z-50" style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', background: 'rgba(0,0,0,0.4)' }}>
                     <div className="flex flex-col items-center justify-center h-full">
                         <div className="glass rounded-3xl px-10 py-10 text-center max-w-xs w-full">
-                            <h3 className="text-xl font-bold text-text-primary mb-2">
-                                {piAttentionReason === "no_face" ? "No Face Detected" :
-                                    piAttentionReason === "head_turned" ? "Please Face the Screen" :
-                                        piAttentionReason === "eyes_closed" ? "Please Keep Your Eyes Open" :
-                                            piAttentionReason === "gaze_away" ? "Please Look at the Screen" :
-                                                "Attention Required"}
-                            </h3>
+                            <h3 className="text-xl font-bold text-text-primary mb-2">No Face Detected</h3>
                             <p className="text-lg text-primary font-mono font-bold mb-2">Test Paused</p>
-                            <p className="text-xs text-text-secondary">
-                                {piAttentionReason === "no_face" ? "No face detected in frame." :
-                                    piAttentionReason === "head_turned" ? "Head turned too far — face the screen." :
-                                        piAttentionReason === "eyes_closed" ? "Eyes closed — please open your eyes." :
-                                            piAttentionReason === "gaze_away" ? "Eyes looking sideways — look at the E." :
-                                                "Please position yourself correctly."}
-                            </p>
+                            <p className="text-xs text-text-secondary">Please look at the screen to continue.</p>
                         </div>
                     </div>
                 </div>

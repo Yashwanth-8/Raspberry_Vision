@@ -41,11 +41,3 @@ DETECT_HEIGHT = 240
 # HC-SR04 ultrasonic sensor GPIO pins (BCM numbering)
 ULTRASONIC_TRIGGER_PIN = 23
 ULTRASONIC_ECHO_PIN = 24
-
-# ---------------------------------------------------------------------------
-# Attention-monitoring thresholds (camera-based, clinical validation)
-# ---------------------------------------------------------------------------
-HEAD_YAW_THRESHOLD_DEG   = 30.0   # horizontal head turn left/right
-HEAD_PITCH_THRESHOLD_DEG = 25.0   # head tilt up/down
-EYES_CLOSED_THRESHOLD_S  = 1.5    # both eyes closed longer than this
-GAZE_OFFSET_THRESHOLD    = 0.40   # normalised iris offset (−1=far left, +1=far right)
