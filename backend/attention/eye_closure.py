@@ -184,14 +184,19 @@ class MockEyeClosureDetector(EyeClosureDetector):
     Stand-in detector for benchmarking and unit tests.
 
     Returns configurable fixed scores so the spike benchmark can measure
-    pipeline overhead without a real model.  Default is both eyes open (1.0).
+    pipeline overhead without a real model.  Default is None (unknown) so the
+    UntestedEyeMonitor and both_closed check never fire on a missing model.
     """
 
     def __init__(
         self,
-        left_score: float = 1.0,
-        right_score: float = 1.0,
+        left_score: Optional[float] = None,
+        right_score: Optional[float] = None,
     ) -> None:
+        # Default None = no real model installed.
+        # UntestedEyeMonitor treats None scores as low-confidence and never
+        # sets attention_override=True, preventing the mock from blocking
+        # monocular tests by falsely reporting both eyes open every frame.
         self._left  = left_score
         self._right = right_score
 

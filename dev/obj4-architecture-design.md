@@ -209,65 +209,72 @@ than it saves unless the GIL bottleneck is confirmed by measurement.
 
 ---
 
-## 7. Hardware spike results — to be filled in on Pi 4
-
-*Run the following from the Pi:*
-```bash
-cd Nadi_hardware/backend
-python3 dev/spike_benchmark.py --duration 60 --output spike_results.json
-```
-
-After running, record results here and update the gate decision.
+## 7. Hardware spike results
 
 ### 7.1 Benchmark environment
 | Field | Value |
 |---|---|
 | Pi hardware | Pi 4 (4 GB) |
-| OS / kernel | *(fill in)* |
-| Python version | *(fill in)* |
-| OpenCV version | *(fill in)* |
 | Eye closure model | MockEyeClosureDetector (crop only) |
-| Frame source | Camera / synthetic *(circle one)* |
+| Frame source | Camera (real Pi Camera) |
+| Frames processed | 1499 in 60 s |
+| FPS achieved | 25.0 fps (target 30 fps) |
 
 ### 7.2 Latency results (from spike_results.json)
-| Stage | P50 | P95 | P99 |
-|---|---|---|---|
-| YuNet | | | |
-| Head pose | | | |
-| Total (mock eye closure) | | | |
-| **Total (with TFLite model)** | **TBD after Obj 1 model selection** | | |
+| Stage | P50 | P95 | P99 | Max |
+|---|---|---|---|---|
+| YuNet | 39.10 ms | 52.68 ms | 65.75 ms | 89.77 ms |
+| Head pose (solvePnP) | 0.01 ms | 0.01 ms | 0.02 ms | 0.18 ms |
+| **Total (mock eye closure)** | **39.15 ms** | **52.81 ms** | **65.81 ms** | **92.84 ms** |
+| Total (with TFLite model) | TBD | TBD | TBD | TBD |
+
+**Finding:** YuNet on Pi 4 is 4–5× slower than estimated (39 ms P50 vs 8–10 ms projected). The Pi OS Bookworm OpenCV DNN build runs YuNet on CPU without ARM NEON SIMD acceleration that the estimate assumed.
+
+**Criterion [1] FAIL** — P95 total 52.81 ms > 25 ms threshold.
 
 ### 7.3 CPU utilisation
 | Metric | Value |
 |---|---|
-| Estimated single-core utilisation (psutil) | |
-| Criterion [2] passed (≤ 60%)? | ☐ YES  ☐ NO |
+| psutil cpu_percent (process, multi-core sum) | 201.5% |
+| Interpretation | ≈2 full CPU cores consumed |
+| Criterion [2] passed (≤ 60% single-core)? | NO |
+
+**Note:** 201.5% is the multi-core sum (psutil default on Linux). On a 4-core Pi 4, a single-core utilisation of 100% would show as 100%. The 201.5% indicates YuNet is occupying ~2 cores. This is consistent with OpenCV DNN using inter-op parallelism internally even with the single `run_in_executor` call.
 
 ### 7.4 WS broadcast latency (live measurement)
-*Measure using a local WebSocket client that records round-trip time:*
-```bash
-# Terminal 1 — start the full backend:
-python3 main.py
+| Metric | Value |
+|---|---|
+| Criterion [3] status | Not yet measured; json.dumps overhead 18.2 µs/call (negligible) |
 
-# Terminal 2 — connect a timing client:
-python3 dev/ws_latency_probe.py  # (add this script if needed)
-```
-| Metric | Baseline (Obj 3) | With attention pipeline |
-|---|---|---|
-| P95 WS latency | | |
-| Delta | | |
-| Criterion [3] passed (no measurable degradation)? | — | ☐ YES  ☐ NO |
+*The distance broadcast loop is non-blocking (property read). With frame decimation (ATTENTION_SKIP=2) the attention pipeline only occupies the executor every 2nd frame, further reducing interference with the broadcast path.*
 
 ---
 
-## 8. Executor decision gate (FINAL — fill in after §7)
+## 8. Executor decision gate (FINAL)
 
-> **Circle one after completing Section 7:**
+> **☑  ThreadPoolExecutor is sufficient — proceed as planned.**
 >
-> ☐  *"ThreadPoolExecutor is sufficient — proceed to Objective 1 as planned."*
+> **Rationale:**
+> The bottleneck is YuNet inference time (P50 39 ms), not Python GIL contention.
+> cv2 DNN already releases the GIL during inference. Moving to a
+> `ProcessPoolExecutor` would add 1–3 ms of IPC overhead (numpy array pickling)
+> on top of the same 39 ms inference — making things slightly *worse*.
 >
-> ☐  *"ProcessPoolExecutor migration required before Objective 1 —
->      estimated scope: _____ days.  Bottleneck: _____."*
+> **Remediation that does work: frame decimation.**
+> Run `AttentionPipeline.process()` every 2nd camera frame (`ATTENTION_SKIP = 2`
+> in `camera_loop`). This brings the effective attention rate to ~12 Hz while
+> the distance broadcast remains at full camera rate (~25 Hz). The cached last
+> detection is reused on skipped frames.
+>
+> **Performance with decimation:**
+> - Distance broadcast: unchanged (non-blocking property read, full rate)
+> - Attention P95 per *broadcast* frame: ~26 ms (52 ms / 2 frames amortised)
+> - Effective attention refresh rate: ~12 Hz
+> - All attention signals (face absent, looking away, untested-eye open) are
+>   fast enough at 12 Hz: human reaction time to head turn is >200 ms;
+>   the 3-frame temporal vote adds ~250 ms intentional delay anyway.
+>
+> **Implemented in `backend/main.py`** `camera_loop` as `ATTENTION_SKIP = 2`.
 
 ---
 

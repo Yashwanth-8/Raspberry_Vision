@@ -127,7 +127,16 @@ async def camera_loop(
     loop = asyncio.get_event_loop()
     target_interval = 1.0 / 30   # target ~30 fps broadcast rate
     _preview_counter = 0
-    PREVIEW_SKIP = 3              # JPEG preview every 3 frames (~10 fps) to save bandwidth
+    PREVIEW_SKIP = 3              # JPEG preview every 3 frames (~10 fps)
+    # Spike result (Pi 4): YuNet P50=39 ms → run attention every 2nd frame.
+    # Distance broadcast stays full-rate; effective attention rate ~12 Hz.
+    ATTENTION_SKIP = 2
+    _attention_counter = 0
+    _last_detection: dict = {     # cached result reused on skipped frames
+        "face_detected": False, "face_count": 0,
+        "attention_ok": False, "attention_reason": "camera_starting",
+        "untested_eye_open_events": 0, "occlusion_confidence_low": False,
+    }
 
     while True:
         t0 = time.monotonic()
@@ -161,32 +170,35 @@ async def camera_loop(
             await asyncio.sleep(0.05)
             continue
 
-        # ---- Attention detection (CPU-bound → executor) ----
-        if pipeline is not None:
-            detection = await loop.run_in_executor(None, pipeline.process, detect_frame)
-        else:
-            # YuNet failed to load at startup — run without face detection
-            detection = {"face_detected": False, "face_count": 0,
-                         "attention_ok": False, "attention_reason": "detector_unavailable",
-                         "untested_eye_open_events": 0, "occlusion_confidence_low": False}
+        # ---- Attention detection (CPU-bound → executor, frame-decimated) ----
+        # Runs every ATTENTION_SKIP frames; cached result reused in between.
+        _attention_counter += 1
+        if _attention_counter >= ATTENTION_SKIP:
+            _attention_counter = 0
+            if pipeline is not None:
+                new_det = await loop.run_in_executor(None, pipeline.process, detect_frame)
+            else:
+                new_det = {"face_detected": False, "face_count": 0,
+                           "attention_ok": False, "attention_reason": "detector_unavailable",
+                           "untested_eye_open_events": 0, "occlusion_confidence_low": False}
 
-        # Defensive guard: if face_detection.py returns an unexpected format
-        # (e.g. old version without attention_ok), log a warning and continue
-        # safely instead of crashing the whole server.
-        if not isinstance(detection, dict) or "attention_ok" not in detection:
-            logger.warning(
-                "detector.process() returned unexpected format: %s — "
-                "check face_detection.py version. Treating as face present.",
-                type(detection).__name__,
-            )
-            detection = {
-                "face_detected": detection.get("face_detected", False) if isinstance(detection, dict) else False,
-                "face_count":    detection.get("face_count", 0)        if isinstance(detection, dict) else 0,
-                "attention_ok":     False,              # state is unknown — report honestly
-                "attention_reason": "detection_error",
-                "untested_eye_open_events": 0,
-                "occlusion_confidence_low": False,
-            }
+            # Defensive guard — only on freshly computed detections
+            if not isinstance(new_det, dict) or "attention_ok" not in new_det:
+                logger.warning(
+                    "pipeline.process() returned unexpected format: %s — "
+                    "check pipeline.py version.",
+                    type(new_det).__name__,
+                )
+                new_det = {
+                    "face_detected": new_det.get("face_detected", False) if isinstance(new_det, dict) else False,
+                    "face_count":    new_det.get("face_count", 0)        if isinstance(new_det, dict) else 0,
+                    "attention_ok":     False,
+                    "attention_reason": "detection_error",
+                    "untested_eye_open_events": 0,
+                    "occlusion_confidence_low": False,
+                }
+            _last_detection = new_det
+        detection = _last_detection
 
         # ---- Distance from HC-SR04 (non-blocking property read) ----
         distance_m     = sensor_to_eye_distance(ultrasonic.distance_m)

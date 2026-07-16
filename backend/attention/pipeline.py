@@ -65,6 +65,11 @@ REASON_LOOKING_AWAY     = "looking_away"
 REASON_EYES_CLOSED      = "both_eyes_closed"
 REASON_UNTESTED_EYE     = "untested_eye_open"
 
+# Consecutive frames with looking_away=True before triggering.
+# At ~12 Hz (decimated attention loop): 3 frames ≈ 250 ms — eliminates
+# single-frame jitter from noisy 5-point YuNet landmarks at 320×240.
+LOOKING_AWAY_CONFIRM_FRAMES: int = 3
+
 
 class AttentionPipeline:
     """
@@ -84,6 +89,7 @@ class AttentionPipeline:
         self._head_pose         = head_pose or HeadPoseEstimator()
         self._eye_closure       = eye_closure or MockEyeClosureDetector()
         self._untested_eye_mon  = UntestedEyeMonitor()
+        self._looking_away_frames: int = 0   # consecutive looking_away frames
 
     def set_eye_tested(self, eye: str) -> None:
         """Called from handle_client on set_test_mode WS message."""
@@ -109,6 +115,7 @@ class AttentionPipeline:
 
         # Fast-path: no face or multiple faces — skip secondary signals
         if not face["face_detected"] or face["face_count"] != 1:
+            self._looking_away_frames = 0   # reset when face is lost
             # Still update untested-eye monitor so event counts stay accurate
             untested = self._untested_eye_mon.update(
                 {"left_score": None, "right_score": None}
@@ -120,6 +127,15 @@ class AttentionPipeline:
 
         # Stage 2 — head pose (solvePnP, ~0.2–0.5 ms)
         pose = self._head_pose.estimate(landmarks)
+
+        # Temporal smoothing: require LOOKING_AWAY_CONFIRM_FRAMES consecutive
+        # looking_away=True before triggering. Eliminates single-frame noise
+        # from noisy 5-point YuNet landmarks at 320×240.
+        if pose["pose_ok"] and pose["looking_away"]:
+            self._looking_away_frames += 1
+        else:
+            self._looking_away_frames = 0
+        pose = {**pose, "looking_away": self._looking_away_frames >= LOOKING_AWAY_CONFIRM_FRAMES}
 
         # Stage 3 — eye closure (~4–8 ms with TFLite model; negligible with mock)
         closure = self._eye_closure.detect(bgr_frame, landmarks, bbox)

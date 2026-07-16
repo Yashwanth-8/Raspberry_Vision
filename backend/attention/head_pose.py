@@ -48,12 +48,17 @@ import numpy as np
 
 # Angles (degrees) beyond which the patient is considered to be looking away.
 # Adjust after rig calibration if the thresholds produce too many false resets.
-YAW_THRESHOLD_DEG: float = 30.0    # left/right head rotation
+YAW_THRESHOLD_DEG: float = 20.0    # left/right head rotation
+                                    # Lowered from 30°: 30° was too permissive at 320×240
 PITCH_THRESHOLD_DEG: float = 25.0  # up/down head tilt
 
 # If the solved pose re-projects the model with RMS > this value (pixels),
-# the pose is rejected as unreliable.  5 px is liberal at 320×240.
-REPROJECTION_ERROR_THRESHOLD_PX: float = 5.0
+# the pose is rejected as unreliable.
+# YuNet landmarks at 320×240 carry ±3–5 px noise; minimum achievable RMS for a
+# good 5-point fit is therefore ~4–8 px.  The original 5 px threshold was
+# rejecting nearly all valid poses → pose_ok=False → gaze check fully bypassed.
+# 12 px accepts good fits while rejecting truly garbage estimates.
+REPROJECTION_ERROR_THRESHOLD_PX: float = 12.0
 
 # ---------------------------------------------------------------------------
 # 3-D reference face model
