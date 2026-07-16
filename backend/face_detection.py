@@ -10,12 +10,24 @@ to avoid the setInputSize coordinate-scaling bug present in older OpenCV
 builds shipped with Raspberry Pi OS, and to keep inference fast (~8 ms on Pi 4).
 
 process() returns:
-  {                                      
-    "face_detected":    bool,            
-    "face_count":       int,             
-    "attention_ok":     bool,   # True → single face present, test may run
-    "attention_reason": str,    # "ok" | "no_face" | "multiple_faces"
+  {
+    "face_detected":    bool,
+    "face_count":       int,
+    "attention_ok":     bool,       # True → single face present, test may run
+    "attention_reason": str,        # "ok" | "no_face" | "multiple_faces"
+    "landmarks_2d":     np.ndarray | None,  # shape (5, 2) float32, pixel coords at
+                                            #   320×240 canvas — None unless single face
+    "bbox":             tuple | None,       # (x, y, w, h) int pixels — None unless single face
   }
+
+  YuNet detection array layout (per face, 15 values):
+    [0-3]   bbox: x1, y1, w, h
+    [4-5]   kpt0: right eye centre  (person's right → image left)
+    [6-7]   kpt1: left eye centre
+    [8-9]   kpt2: nose tip
+    [10-11] kpt3: right mouth corner
+    [12-13] kpt4: left mouth corner
+    [14]    confidence score
 """
 
 import urllib.request
@@ -116,6 +128,8 @@ class FaceDetector:
                 "face_count": 0,
                 "attention_ok": False,
                 "attention_reason": "no_face",
+                "landmarks_2d": None,
+                "bbox": None,
             }
 
         faces = sorted(faces, key=lambda f: f[14], reverse=True)
@@ -128,14 +142,28 @@ class FaceDetector:
                 "face_count": face_count,
                 "attention_ok": False,
                 "attention_reason": "multiple_faces",
+                "landmarks_2d": None,
+                "bbox": None,
             }
 
-        # ---- Single face present → test may proceed ----
+        # ---- Single face present — extract landmarks and bbox ----
+        face = faces[0]
+        landmarks_2d = np.array([
+            [face[4],  face[5]],   # kpt0 — right eye centre
+            [face[6],  face[7]],   # kpt1 — left eye centre
+            [face[8],  face[9]],   # kpt2 — nose tip
+            [face[10], face[11]],  # kpt3 — right mouth corner
+            [face[12], face[13]],  # kpt4 — left mouth corner
+        ], dtype=np.float32)
+        bbox = (int(face[0]), int(face[1]), int(face[2]), int(face[3]))
+
         return {
             "face_detected": True,
             "face_count": 1,
             "attention_ok": True,
             "attention_reason": "ok",
+            "landmarks_2d": landmarks_2d,
+            "bbox": bbox,
         }
 
     def close(self) -> None:

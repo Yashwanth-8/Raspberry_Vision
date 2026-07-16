@@ -1,4 +1,20 @@
 """
+ARCHIVED — DEAD CODE — DO NOT USE IN PRODUCTION
+================================================
+This file is a reference copy of backend/distance.py, which was removed as
+part of Objective 3 of the attention-distance-overhaul plan.
+
+This module has ZERO active callers in Pi-mode production. Distance
+measurement is handled exclusively by the HC-SR04 ultrasonic sensor via
+ultrasonic.py.  The browser-side fallback runs entirely in TypeScript/MediaPipe
+and never calls into this Python code.
+
+It is preserved here only for reference if a future contributor needs to
+understand what camera-based distance estimation would look like.  It must
+not be imported or re-enabled without passing the Objective 4 spike
+acceptance criteria and updating the Pi-mode distance-source assertion test.
+================================================
+
 Port of src/lib/distance.ts — distance estimation from MediaPipe face landmarks.
 
 Uses the pinhole camera model:  d = f_px × D_real / P_measured

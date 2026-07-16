@@ -14,12 +14,17 @@ WebSocket message sent to all connected clients every frame:
     "face_count":       int,
     "attention_ok":     bool,       # false → frontend should pause the test
     "attention_reason": str,        # "ok" | "no_face" | "multiple_faces"
+                                    #   | "looking_away" | "both_eyes_closed"
+                                    #   | "untested_eye_open"
                                     #   | "camera_starting" | "detection_error"
-    "distance":         float,      # Kalman-filtered metres (from ultrasonic)
-    "raw_distance":     float,      # unfiltered metres
+                                    #   | "detector_unavailable"
+    "distance":         float,      # screen-to-eye metres (HC-SR04 + offset)
+    "raw_distance":     float,      # unfiltered metres (HC-SR04 + offset)
     "confidence":       float,      # 1.0 when ultrasonic active, 0.0 if no reading
     "iris_px":          null,       # always null (ultrasonic handles distance)
-    "focal_length_px":  null        # always null
+    "focal_length_px":  null,       # always null
+    "untested_eye_open_events": int,  # cumulative confirmed untested-eye-open events
+    "occlusion_confidence_low": bool  # true if any ambiguous eye score this session
 }
 
 Calibration message received from frontend (kept for backward compat, ignored):
@@ -43,7 +48,10 @@ from websockets.server import WebSocketServerProtocol
 from camera import PiCamera
 from face_detection import FaceDetector
 from ultrasonic import UltrasonicSensor
-from constants import WS_HOST, WS_PORT
+from attention.pipeline import AttentionPipeline
+from attention.head_pose import HeadPoseEstimator
+from attention.eye_closure import MockEyeClosureDetector
+from constants import WS_HOST, WS_PORT, sensor_to_eye_distance
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,6 +64,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 connected_clients: Set[WebSocketServerProtocol] = set()
+# Module-level pipeline reference so handle_client can call set_eye_tested().
+# Set in main() after the pipeline is created.
+_pipeline: Optional[AttentionPipeline] = None
 
 # ---------------------------------------------------------------------------
 # WebSocket handler
@@ -66,6 +77,11 @@ async def handle_client(websocket: WebSocketServerProtocol) -> None:
     connected_clients.add(websocket)
     client_addr = websocket.remote_address
     logger.info("Client connected: %s  (total: %d)", client_addr, len(connected_clients))
+
+    # Reset to binocular mode on every (re)connect so stale test-mode state
+    # from a previous session never leaks into a new one.
+    if _pipeline is not None:
+        _pipeline.reset_eye_tested()
 
     try:
         async for raw_msg in websocket:
@@ -79,6 +95,15 @@ async def handle_client(websocket: WebSocketServerProtocol) -> None:
             # comes from the HC-SR04 ultrasonic sensor.
             if msg.get("type") in ("calibrate", "set_focal_length"):
                 logger.debug("Received legacy calibration message (ignored): %s", msg)
+
+            # Objective 2: monocular test mode — frontend sends eye being tested
+            elif msg.get("type") == "set_test_mode":
+                eye = str(msg.get("eye", "OU"))
+                if eye not in ("OD", "OS", "OU"):
+                    logger.warning("set_test_mode: invalid eye value '%s' — ignoring", eye)
+                elif _pipeline is not None:
+                    _pipeline.set_eye_tested(eye)
+                    logger.info("Test mode set: eye_tested=%s", eye)
 
     except websockets.exceptions.ConnectionClosed:
         pass
@@ -96,7 +121,7 @@ async def handle_client(websocket: WebSocketServerProtocol) -> None:
 
 async def camera_loop(
     camera: PiCamera,
-    detector: FaceDetector,
+    pipeline: Optional[AttentionPipeline],
     ultrasonic: UltrasonicSensor,
 ) -> None:
     loop = asyncio.get_event_loop()
@@ -111,22 +136,22 @@ async def camera_loop(
         detect_frame = await loop.run_in_executor(None, camera.grab_detect_frame)
 
         if detect_frame is None:
-            # Camera still warming up — send distance and let the test proceed.
-            # Setting attention_ok=True here prevents the startup overlay from
-            # blocking the user before the camera has produced its first frame.
-            distance_m     = ultrasonic.distance_m
-            raw_distance_m = ultrasonic.raw_distance_m
+            # Camera still warming up — state is unknown; report honestly.
+            distance_m     = sensor_to_eye_distance(ultrasonic.distance_m)
+            raw_distance_m = sensor_to_eye_distance(ultrasonic.raw_distance_m)
             no_cam_msg = json.dumps({
                 "type": "frame",
                 "face_detected": False,
                 "face_count": 0,
-                "attention_ok": True,
+                "attention_ok": False,
                 "attention_reason": "camera_starting",
                 "distance": round(distance_m, 4),
                 "raw_distance": round(raw_distance_m, 4),
                 "confidence": round(1.0 if ultrasonic.is_sensor_active else 0.0, 4),
                 "iris_px": None,
                 "focal_length_px": None,
+                "untested_eye_open_events": 0,
+                "occlusion_confidence_low": False,
             })
             if connected_clients:
                 await asyncio.gather(
@@ -137,12 +162,13 @@ async def camera_loop(
             continue
 
         # ---- Attention detection (CPU-bound → executor) ----
-        if detector is not None:
-            detection = await loop.run_in_executor(None, detector.process, detect_frame)
+        if pipeline is not None:
+            detection = await loop.run_in_executor(None, pipeline.process, detect_frame)
         else:
             # YuNet failed to load at startup — run without face detection
             detection = {"face_detected": False, "face_count": 0,
-                         "attention_ok": True, "attention_reason": "detector_unavailable"}
+                         "attention_ok": False, "attention_reason": "detector_unavailable",
+                         "untested_eye_open_events": 0, "occlusion_confidence_low": False}
 
         # Defensive guard: if face_detection.py returns an unexpected format
         # (e.g. old version without attention_ok), log a warning and continue
@@ -156,13 +182,15 @@ async def camera_loop(
             detection = {
                 "face_detected": detection.get("face_detected", False) if isinstance(detection, dict) else False,
                 "face_count":    detection.get("face_count", 0)        if isinstance(detection, dict) else 0,
-                "attention_ok":     True,               # benefit of the doubt on detection errors
+                "attention_ok":     False,              # state is unknown — report honestly
                 "attention_reason": "detection_error",
+                "untested_eye_open_events": 0,
+                "occlusion_confidence_low": False,
             }
 
         # ---- Distance from HC-SR04 (non-blocking property read) ----
-        distance_m     = ultrasonic.distance_m
-        raw_distance_m = ultrasonic.raw_distance_m
+        distance_m     = sensor_to_eye_distance(ultrasonic.distance_m)
+        raw_distance_m = sensor_to_eye_distance(ultrasonic.raw_distance_m)
         # confidence is 1.0 ONLY when sensor is wired and returning valid readings.
         # When sensor is unplugged/out-of-range, is_sensor_active=False and
         # distance_m=0.0, so confidence=0.0 — frontend correctly blocks the test.
@@ -180,6 +208,8 @@ async def camera_loop(
             "confidence":       round(confidence, 4),
             "iris_px":          None,
             "focal_length_px":  None,
+            "untested_eye_open_events": detection.get("untested_eye_open_events", 0),
+            "occlusion_confidence_low": detection.get("occlusion_confidence_low", False),
         })
 
         if connected_clients:
@@ -259,10 +289,29 @@ async def main() -> None:
                 "  Attention monitoring disabled — test will proceed without face detection.",
                 exc,
             )
-            detector = None  # camera_loop handles None detector gracefully
+            detector = None  # camera_loop handles None pipeline gracefully
+
+        # Wrap detector in the unified attention pipeline:
+        # face detection (YuNet) → head pose (solvePnP) → eye closure (mock until Obj 1 TFLite)
+        if detector is not None:
+            pipeline: Optional[AttentionPipeline] = AttentionPipeline(
+                detector,
+                HeadPoseEstimator(),
+                MockEyeClosureDetector(),   # replace with TFLiteEyeClosureDetector once model is selected
+            )
+            logger.info(
+                "Attention pipeline active — face detection + head pose (solvePnP) + "
+                "eye closure (MockEyeClosureDetector placeholder)"
+            )
+        else:
+            pipeline = None
+
+        # Expose pipeline to handle_client so it can call set_eye_tested()
+        global _pipeline
+        _pipeline = pipeline
 
         camera_task = asyncio.create_task(
-            camera_loop(camera, detector, ultrasonic)
+            camera_loop(camera, pipeline, ultrasonic)
         )
 
         try:
@@ -271,7 +320,8 @@ async def main() -> None:
             pass
         finally:
             camera.stop()
-            detector.close()
+            if detector is not None:
+                detector.close()
             ultrasonic.stop()
             logger.info("Shutdown complete")
 

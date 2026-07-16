@@ -33,8 +33,12 @@ export interface HardwareWSState {
     previewUrl: string | null;
     /** true when all attention rules pass (single face present) */
     attentionOk: boolean;
-    /** "ok" | "no_face" | "multiple_faces" | "camera_starting" | "detection_error" */
+    /** "ok" | "no_face" | "multiple_faces" | "looking_away" | "both_eyes_closed" | "untested_eye_open" | "camera_starting" | "detection_error" */
     attentionReason: string;
+    /** Cumulative count of confirmed untested-eye-open events (Objective 2) */
+    untestedEyeOpenEvents: number;
+    /** True when eye-closure confidence was ambiguous during the session (Objective 2) */
+    occlusionConfidenceLow: boolean;
 }
 
 /**
@@ -59,6 +63,8 @@ class HardwareWSManager {
         previewUrl: null,
         attentionOk: true,
         attentionReason: "ok",
+        untestedEyeOpenEvents: 0,
+        occlusionConfidenceLow: false,
     };
 
     static getInstance(): HardwareWSManager {
@@ -139,6 +145,8 @@ class HardwareWSManager {
                     focalLengthPx: msg.focal_length_px ?? 0,
                     attentionOk: msg.attention_ok ?? true,
                     attentionReason: msg.attention_reason ?? "ok",
+                    untestedEyeOpenEvents: msg.untested_eye_open_events ?? 0,
+                    occlusionConfidenceLow: msg.occlusion_confidence_low ?? false,
                 };
                 this.notify();
             } catch {
@@ -173,6 +181,17 @@ class HardwareWSManager {
         }
     }
 
+    /**
+     * Notify the backend which eye is being tested so the untested-eye monitor
+     * can activate.  Call after eye selection, before CameraSetupScreen completes.
+     * eye: "OD" = right eye, "OS" = left eye, "OU" = both (default)
+     */
+    sendTestMode(eye: "OD" | "OS" | "OU") {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ type: "set_test_mode", eye }));
+        }
+    }
+
     destroy() {
         this.destroyed = true;
         if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -196,6 +215,8 @@ export function useHardwareWS(): HardwareWSState {
         previewUrl: null,
         attentionOk: true,
         attentionReason: "ok",
+        untestedEyeOpenEvents: 0,
+        occlusionConfidenceLow: false,
     }));
 
     useEffect(() => {
@@ -213,4 +234,12 @@ export function useHardwareWS(): HardwareWSState {
  */
 export function sendIPDToBackend(ipdMm: number) {
     HardwareWSManager.getInstance().sendIPD(ipdMm);
+}
+
+/**
+ * Notify the backend which eye is being tested (Objective 2).
+ * Call after eye selection in CameraSetupScreen / IPDScreen.
+ */
+export function sendTestModeToBackend(eye: "OD" | "OS" | "OU") {
+    HardwareWSManager.getInstance().sendTestMode(eye);
 }

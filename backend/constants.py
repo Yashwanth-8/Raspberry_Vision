@@ -41,3 +41,42 @@ DETECT_HEIGHT = 240
 # HC-SR04 ultrasonic sensor GPIO pins (BCM numbering)
 ULTRASONIC_TRIGGER_PIN = 23
 ULTRASONIC_ECHO_PIN = 24
+
+# ---------------------------------------------------------------------------
+# Sensor-to-eye offset
+# ---------------------------------------------------------------------------
+# The HC-SR04 is mounted ON TOP OF the screen, pointing forward toward the patient.
+#
+# Geometry:
+#   At typical test distances (40–80 cm) the sensor reading closely approximates
+#   the horizontal screen-to-eye distance. The only geometric error comes from
+#   the sensor being above the patient's eye level (≈ half the screen height).
+#   For a 20 cm screen this error is only ~1–3 cm — within the ±2–3 cm residual
+#   uncertainty from the lack of a chin rest. A linear offset is sufficient.
+#
+# Measurement method (do once on the physical rig):
+#   1. Position a patient at a known distance (tape measure, eye to screen face).
+#   2. Read what the sensor reports in the app's live distance display.
+#   3. SENSOR_TO_EYE_OFFSET_M = sensor_reading − actual_eye_distance
+#      (positive if sensor reads MORE than actual, negative if it reads LESS)
+#   Typical value for top-mounted sensor: 0.00 – 0.03 m (0 – 3 cm).
+#
+# Start at 0.0 and refine with the empirical measurement above.
+# *** Update before clinical use. ***
+SENSOR_TO_EYE_OFFSET_M: float = 0.0    # metres — update after empirical measurement
+
+
+def sensor_to_eye_distance(raw_m: float) -> float:
+    """
+    Convert a raw HC-SR04 reading to screen-to-eye distance.
+
+    For a top-of-screen sensor the raw reading closely approximates the
+    horizontal screen-to-eye distance.  Subtracts the empirically measured
+    SENSOR_TO_EYE_OFFSET_M (typically 0–3 cm for top-mounted placement) and
+    clamps to a minimum of 10 cm.
+
+    This is the single canonical application point for the offset; no other
+    code path should apply it.
+    """
+    corrected = raw_m - SENSOR_TO_EYE_OFFSET_M
+    return max(corrected, 0.10)

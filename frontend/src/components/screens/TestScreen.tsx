@@ -13,6 +13,7 @@ import {
     type LandmarkPoint,
 } from "@/lib/distance";
 import { useHardwareWS } from "@/lib/hardware-ws";
+import { stepStabilizing } from "@/lib/stability-fsm";
 import {
     optotypeHeightPx,
     smartRandomDirection,
@@ -68,7 +69,8 @@ export default function TestScreen() {
     const animFrameRef = useRef<number>(0);
 
     // Pi hardware mode
-    const { piMode, faceDetected: piFaceDetected, faceCount: piFaceCount, attentionOk: piAttentionOk, attentionReason: piAttentionReason, previewUrl: piPreviewUrl } = useHardwareWS();
+    const { piMode, faceDetected: piFaceDetected, faceCount: piFaceCount, attentionOk: piAttentionOk, attentionReason: piAttentionReason, previewUrl: piPreviewUrl, untestedEyeOpenEvents: piUntestedEyeOpenEvents, occlusionConfidenceLow: piOcclusionConfidenceLow } = useHardwareWS();
+    const eyeTested = useAppStore((s) => s.eyeTested);
     const piProbeCompleteRef = useRef(false);
     useEffect(() => {
         const t = setTimeout(() => { piProbeCompleteRef.current = true; }, 1600);
@@ -88,6 +90,10 @@ export default function TestScreen() {
     // the latest value without needing to be re-created on every attention change.
     const piAttentionOkRef = useRef(true);
     useEffect(() => { piAttentionOkRef.current = piAttentionOk; }, [piAttentionOk]);
+    // Ref mirror of piMode for the same reason — the stability interval has empty
+    // deps so it captures the initial piMode=false from the first render.
+    const piModeRef = useRef(false);
+    useEffect(() => { piModeRef.current = piMode; }, [piMode]);
 
     const [currentFilteredDist, setCurrentFilteredDist] = useState(0);
     const [focalLength, setFocalLength] = useState(0);
@@ -391,19 +397,27 @@ export default function TestScreen() {
                 }
             } else if (stab === "STABILIZING") {
                 const drift = Math.abs(dist - stabilityAnchorRef.current) * 100;
+                const elapsed = (Date.now() - stabilityStartRef.current) / 1000;
 
-                if (drift > 10) {
-                    // Moved during countdown — reset immediately
+                const outcome = stepStabilizing({
+                    distDriftCm: drift,
+                    elapsedSeconds: elapsed,
+                    piMode: piModeRef.current,
+                    piAttentionOk: piAttentionOkRef.current,
+                });
+
+                if (outcome === "reset_attention" || outcome === "reset_drift") {
                     useAppStore.getState().setStability("LOCKED");
-                    stabilityAnchorRef.current = dist;
+                    // On drift reset: re-anchor to current position.
+                    // On attention reset: keep the anchor (patient is still at the right distance).
+                    if (outcome === "reset_drift") stabilityAnchorRef.current = dist;
                     useAppStore.getState().setStabilityTimer(STABILITY_LOCK_DURATION_S);
                 } else {
-                    // Gentle drift during countdown is fine
+                    // "counting" or "unlocked" — gentle anchor tracking is valid
                     stabilityAnchorRef.current = 0.97 * stabilityAnchorRef.current + 0.03 * dist;
-                    const elapsed = (Date.now() - stabilityStartRef.current) / 1000;
                     const remaining = Math.max(0, STABILITY_LOCK_DURATION_S - elapsed);
                     useAppStore.getState().setStabilityTimer(remaining);
-                    if (elapsed >= STABILITY_LOCK_DURATION_S) {
+                    if (outcome === "unlocked") {
                         useAppStore.getState().setStability("UNLOCKED");
                         useAppStore.getState().setLockedDistance(stabilityAnchorRef.current);
                     }
@@ -447,7 +461,7 @@ export default function TestScreen() {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (stability !== "UNLOCKED") return;
             // In Pi mode: block input when attention monitor says user isn't engaged
-            if (piMode && !piAttentionOkRef.current) return;
+            if (piModeRef.current && !piAttentionOkRef.current) return;
 
             let answered: EDirection | null = null;
             switch (e.key) {
@@ -471,7 +485,7 @@ export default function TestScreen() {
     const handleAnswer = useCallback(
         (answered: EDirection) => {
             // Block answers when Pi attention monitor says user isn't engaged
-            if (piMode && !piAttentionOkRef.current) return;
+            if (piModeRef.current && !piAttentionOkRef.current) return;
             const correct = answered === currentDirection;
             const level = ACUITY_LEVELS[currentLevelIndex];
 
@@ -631,6 +645,8 @@ export default function TestScreen() {
             date: new Date().toISOString(),
             perLevelScores,
             cheatingFlags: cheatingFlagsRef.current,
+            untestedEyeOpenEvents: piUntestedEyeOpenEvents,
+            occlusionConfidenceLow: piOcclusionConfidenceLow,
         };
 
         setTestResult(result);
@@ -730,6 +746,22 @@ export default function TestScreen() {
                     </div>
                 </div>
             )}
+            {/* Untested-eye open overlay (Objective 2 — Pi + monocular mode only) */}
+            {piMode && piAttentionReason === "untested_eye_open" && (
+                <div className="absolute inset-0 z-50" style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', background: 'rgba(0,0,0,0.5)' }}>
+                    <div className="flex flex-col items-center justify-center h-full">
+                        <div className="glass rounded-3xl px-10 py-10 text-center max-w-xs w-full">
+                            <h3 className="text-xl font-bold text-warning mb-2">Eye Check</h3>
+                            <p className="text-lg text-warning font-mono font-bold mb-3">Test Paused</p>
+                            <p className="text-sm text-text-primary mb-1">
+                                Please cover your{" "}
+                                <strong>{eyeTested === "OD" ? "left" : "right"} eye</strong>
+                            </p>
+                            <p className="text-xs text-text-secondary mt-2">The test will resume automatically.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Multiple faces lock overlay */}
             {multiFaceLock && (
                 <div className="absolute inset-0 z-50" style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', background: 'rgba(0,0,0,0.3)' }}>
@@ -762,8 +794,8 @@ export default function TestScreen() {
                     </button>
                 </div>
             )}
-            {/* Gyro debug overlay */}
-            {gyroAvailable && (
+            {/* Gyro debug overlay — development only */}
+            {process.env.NODE_ENV === 'development' && gyroAvailable && (
                 <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000, background: 'rgba(0,0,0,0.5)', color: '#0ff', padding: '8px', borderRadius: '8px', fontSize: '12px' }}>
                     <div>Gyro α: {lastGyroRef.current.alpha.toFixed(1)}</div>
                     <div>Gyro β: {lastGyroRef.current.beta.toFixed(1)}</div>

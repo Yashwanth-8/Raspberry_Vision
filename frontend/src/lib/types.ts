@@ -62,6 +62,9 @@ export interface TestResult {
     date: string;
     perLevelScores: { level: AcuityLevel; correct: number; total: number }[];
     cheatingFlags: CheatFlag[];
+    // Objective 2 — monocular test integrity fields
+    untestedEyeOpenEvents?: number;   // count of confirmed untested-eye-open events
+    occlusionConfidenceLow?: boolean; // true if any low-confidence detection during test
 }
 
 export interface CalibrationData {

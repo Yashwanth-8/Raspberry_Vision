@@ -12,13 +12,14 @@ import {
     autoEstimateFocalLength,
     type LandmarkPoint,
 } from "@/lib/distance";
-import { useHardwareWS, sendIPDToBackend } from "@/lib/hardware-ws";
+import { useHardwareWS, sendIPDToBackend, sendTestModeToBackend } from "@/lib/hardware-ws";
 
 export default function CameraSetupScreen() {
     const setScreen = useAppStore((s) => s.setScreen);
     const setDistance = useAppStore((s) => s.setDistance);
     const ipd = useAppStore((s) => s.ipd);
     const isMobile = useAppStore((s) => s.isMobile);
+    const eyeTested = useAppStore((s) => s.eyeTested);
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -63,13 +64,14 @@ export default function CameraSetupScreen() {
         setCameraReady(true);
         setModelLoading(false);
         sendIPDToBackend(ipd);
+        sendTestModeToBackend(eyeTested);  // Objective 2: activate per-eye monitor
         // Stop any browser camera that may have started during probe window
         cancelAnimationFrame(animFrameRef.current);
         if (streamRef.current) {
             streamRef.current.getTracks().forEach((t) => t.stop());
             streamRef.current = null;
         }
-    }, [piMode, ipd]);
+    }, [piMode, ipd, eyeTested]);
 
     // Load MediaPipe Face Mesh + camera with auto focal length
     useEffect(() => {
