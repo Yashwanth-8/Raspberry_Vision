@@ -66,9 +66,9 @@ REASON_EYES_CLOSED      = "both_eyes_closed"
 REASON_UNTESTED_EYE     = "untested_eye_open"
 
 # Consecutive frames with looking_away=True before triggering.
-# At ~12 Hz (decimated attention loop): 3 frames ≈ 250 ms — eliminates
-# single-frame jitter from noisy 5-point YuNet landmarks at 320×240.
-LOOKING_AWAY_CONFIRM_FRAMES: int = 3
+# At ~12 Hz (decimated attention loop): 5 frames ≈ 415 ms — eliminates
+# jitter and compensates for uncalibrated camera geometry bias.
+LOOKING_AWAY_CONFIRM_FRAMES: int = 5
 
 
 class AttentionPipeline:
@@ -127,6 +127,12 @@ class AttentionPipeline:
 
         # Stage 2 — head pose (solvePnP, ~0.2–0.5 ms)
         pose = self._head_pose.estimate(landmarks)
+
+        # DEBUG: uncomment the line below on the Pi to read actual yaw/pitch values
+        # and calibrate YAW_THRESHOLD_DEG / PITCH_THRESHOLD_DEG for your camera.
+        # import logging; logging.getLogger(__name__).debug(
+        #     "pose ok=%s yaw=%.1f pitch=%.1f reproj=NA",
+        #     pose['pose_ok'], pose['yaw_deg'] or 0, pose['pitch_deg'] or 0)
 
         # Temporal smoothing: require LOOKING_AWAY_CONFIRM_FRAMES consecutive
         # looking_away=True before triggering. Eliminates single-frame noise

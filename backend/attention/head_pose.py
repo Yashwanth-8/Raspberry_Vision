@@ -48,9 +48,13 @@ import numpy as np
 
 # Angles (degrees) beyond which the patient is considered to be looking away.
 # Adjust after rig calibration if the thresholds produce too many false resets.
-YAW_THRESHOLD_DEG: float = 20.0    # left/right head rotation
-                                    # Lowered from 30°: 30° was too permissive at 320×240
-PITCH_THRESHOLD_DEG: float = 25.0  # up/down head tilt
+YAW_THRESHOLD_DEG: float = 30.0    # left/right head rotation
+                                    # Camera on top of screen = non-frontal geometry;
+                                    # solvePnP with uncalibrated FOV adds systematic bias.
+                                    # 30° balances detection vs false positives.
+PITCH_THRESHOLD_DEG: float = 35.0  # up/down head tilt
+                                    # Raised to 35°: top-mounted camera creates upward-
+                                    # tilt bias in pitch estimate even for frontal sitters.
 
 # If the solved pose re-projects the model with RMS > this value (pixels),
 # the pose is rejected as unreliable.
